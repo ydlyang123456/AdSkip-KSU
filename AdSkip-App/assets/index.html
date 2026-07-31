@@ -636,18 +636,21 @@
     refreshAdsdk();
   }
 
-  // ---- 读取并刷新广告 SDK 域名增强开关（hosts 线） ----
+  // ---- 读取并刷新广告 SDK 域名增强开关（hosts 线，异步避免阻塞 su） ----
   function refreshAdsdk(){
     var el = $("adsdkToggle");
     if (!el) return;
     try {
-      var raw = AdSkipBridge.getConfig("SKIP_ADSDK");
-      var o = JSON.parse(raw);
-      setToggle("adsdkToggle", o && o.value === "1");
+      getConfigAsync("SKIP_ADSDK", "window.__onAdsdk");
     } catch(e){
       setToggle("adsdkToggle", false);
     }
   }
+  window.__onAdsdk = function(json){
+    var o;
+    try { o = JSON.parse(json); } catch(e){ o = null; }
+    setToggle("adsdkToggle", o && o.value === "1");
+  };
 
   function renderEmpty(){
     var dash = "—";
@@ -679,12 +682,27 @@
     }
   }
 
-  // ---- 刷新状态 ----
+  // ---- 刷新状态（异步：避免同步 su 阻塞 JS 引擎导致冷启动黑屏） ----
   function refresh(){
-    var raw;
-    try { raw = AdSkipBridge.getStatus(); } catch(e){ raw = '{"error":true}'; }
+    try { getStatusAsync("window.__onStatus"); } catch(e){}
+  }
+
+  // ---- 异步回调：root 检测结果 ----
+  window.__onHasRoot = function(ok){
+    hasRootOk = ok;
+    if (!ok){
+      showBanner("本应用需要 Root 权限（KernelSU / Magisk / APatch）才能管理模块");
+      setControlsEnabled(false);
+      renderEmpty();
+      return;
+    }
+    getStatusAsync("window.__onStatus");
+  };
+
+  // ---- 异步回调：模块状态 ----
+  window.__onStatus = function(json){
     var s;
-    try { s = JSON.parse(raw); } catch(e){ s = { error: true }; }
+    try { s = JSON.parse(json); } catch(e){ s = { error: true }; }
     if (s && s.error){
       showBanner("未检测到 AdSkip-KSU 模块：请先刷入模块，再用本 App 管理（本 App 需要 Root 权限）");
       setControlsEnabled(false);
@@ -698,7 +716,7 @@
     refreshCacheWarn();
     refreshVpn();
     if (currentTab === "logs") loadLog();
-  }
+  };
 
   // ---- tab 切换 ----
   function bindTabs(){
@@ -1075,17 +1093,8 @@
     bindAdsdk();
     bindCacheClear();
     bindVpn();
-    try {
-      hasRootOk = (typeof AdSkipBridge !== "undefined") && (AdSkipBridge.hasRoot() === "true");
-    } catch(e){ hasRootOk = false; }
-    if (!hasRootOk){
-      showBanner("本应用需要 Root 权限（KernelSU / Magisk / APatch）才能管理模块");
-      setControlsEnabled(false);
-      renderEmpty();
-      return;
-    }
-    hideBanner();
-    refresh();
+    // 先渲染占位（HTML 默认 pillRoot 已是"检测中…"），异步检测 root 与状态，避免冷启动黑屏
+    hasRootAsync("window.__onHasRoot");
   }
 
   if (document.readyState === "loading"){

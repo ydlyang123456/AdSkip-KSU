@@ -7,6 +7,7 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.provider.Settings;
 import android.webkit.JavascriptInterface;
+import android.webkit.WebView;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -47,6 +48,9 @@ public class AdSkipBridge {
     /** root 检测结果缓存（null 表示尚未检测）。 */
     private Boolean cachedRoot = null;
 
+    /** 宿主 WebView（用于异步桥方法在 UI 线程回调 JS）。 */
+    private WebView webView;
+
     /**
      * 构造桥对象。
      *
@@ -55,6 +59,18 @@ public class AdSkipBridge {
     public AdSkipBridge(MainActivity activity) {
         this.activity = activity;
         this.prefs = new AdSkipPrefs(activity);
+    }
+
+    /**
+     * 注入宿主 WebView，供异步桥方法（hasRootAsync / getStatusAsync / getConfigAsync）
+     * 在后台线程执行完 su 后，切回 UI 线程通过 {@code evaluateJavascript} 回调 JS。
+     *
+     * <p>必须在 {@code addJavascriptInterface} 之前由 {@link MainActivity} 调用。
+     *
+     * @param webView 宿主 WebView 实例
+     */
+    public void setWebView(WebView webView) {
+        this.webView = webView;
     }
 
     /** 模块脚本路径与运行目录（与 AdSkip-KSU 模块保持一致）。 */
@@ -158,29 +174,37 @@ public class AdSkipBridge {
     }
 
     /**
+     * 检测设备是否拥有 root（同步核心逻辑，供 {@link #hasRoot()} 与 {@link #hasRootAsync(String)} 复用）。
+     *
+     * @return 是否拥有 root
+     */
+    private boolean hasRootSync() {
+        if (cachedRoot != null) {
+            return cachedRoot;
+        }
+        RootResult r = runAsRoot("id -u");
+        // root 下 id -u 输出 0 且退出码 0
+        boolean ok = (r.exitCode == 0) && "0".equals(r.output.trim());
+        cachedRoot = ok;
+        return ok;
+    }
+
+    /**
      * 检测设备是否拥有 root。
      *
      * @return "true" / "false"
      */
     @JavascriptInterface
     public String hasRoot() {
-        if (cachedRoot != null) {
-            return cachedRoot ? "true" : "false";
-        }
-        RootResult r = runAsRoot("id -u");
-        // root 下 id -u 输出 0 且退出码 0
-        boolean ok = (r.exitCode == 0) && "0".equals(r.output.trim());
-        cachedRoot = ok;
-        return ok ? "true" : "false";
+        return hasRootSync() ? "true" : "false";
     }
 
     /**
-     * 读取模块状态（JSON 字符串，由 action.sh status --json 输出）。
+     * 读取模块状态（同步核心逻辑，供 {@link #getStatus()} 与 {@link #getStatusAsync(String)} 复用）。
      *
-     * @return action.sh 原样输出的 JSON；失败返回 {@code {"error":true}}
+     * @return action.sh 原样输出的 JSON；失败返回 {@code {}}
      */
-    @JavascriptInterface
-    public String getStatus() {
+    private String getStatusSync() {
         RootResult r = runAsRoot("sh " + ACTION_SH + " status --json");
         String base = (r.exitCode == 0 && r.output != null && !r.output.trim().isEmpty())
                 ? r.output : "{}";
@@ -194,6 +218,16 @@ public class AdSkipBridge {
         } catch (Exception ignored) {
         }
         return base;
+    }
+
+    /**
+     * 读取模块状态（JSON 字符串，由 action.sh status --json 输出）。
+     *
+     * @return action.sh 原样输出的 JSON；失败返回 {@code {"error":true}}
+     */
+    @JavascriptInterface
+    public String getStatus() {
+        return getStatusSync();
     }
 
     /**
@@ -296,13 +330,14 @@ public class AdSkipBridge {
     // ============================================================
 
     /**
-     * 读取模块 config.sh 变量值（白名单键）。供 UI 显示 hosts 开关状态（如 SKIP_ADSDK）。
+     * 读取模块 config.sh 变量值（同步核心逻辑，供 {@link #getConfig(String)} 与
+     * {@link #getConfigAsync(String, String)} 复用）。
      *
+     * @param key 白名单键
      * @return {@code {"value":"0"}} 成功；{@code {"error":"bad_cmd"}} 非法键；
      *         {@code {"error":true}} 读取失败
      */
-    @JavascriptInterface
-    public String getConfig(String key) {
+    private String getConfigSync(String key) {
         if (key == null) {
             return "{\"error\":\"bad_cmd\"}";
         }
@@ -325,6 +360,106 @@ public class AdSkipBridge {
         } catch (JSONException e) {
             return "{\"error\":true}";
         }
+    }
+
+    /**
+     * 读取模块 config.sh 变量值（白名单键）。供 UI 显示 hosts 开关状态（如 SKIP_ADSDK）。
+     *
+     * @return {@code {"value":"0"}} 成功；{@code {"error":"bad_cmd"}} 非法键；
+     *         {@code {"error":true}} 读取失败
+     */
+    @JavascriptInterface
+    public String getConfig(String key) {
+        return getConfigSync(key);
+    }
+
+    // ============================================================
+    // 异步桥方法（v1.3 修复冷启动黑屏）：后台线程跑 su，结果切回 UI 线程回调 JS
+    // ============================================================
+
+    /**
+     * 异步检测 root 并把结果回调给 JS（避免冷启动时同步 su 阻塞 JS 引擎导致黑屏）。
+     *
+     * <p>在后台线程调用 {@link #hasRootSync()}，再经由 {@code webView.evaluateJavascript}
+     * 在 UI 线程调用 {@code callback(true|false)}。回调名由 JS 端以字符串传入。
+     *
+     * @param callback 形如 "window.__onHasRoot" 的全局函数名，回调形如 {@code callback(true)}
+     */
+    @JavascriptInterface
+    public void hasRootAsync(final String callback) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final boolean ok = hasRootSync();
+                final String js = callback + "(" + ok + ")";
+                final WebView wv = webView;
+                if (wv != null) {
+                    wv.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            wv.evaluateJavascript(js, null);
+                        }
+                    });
+                }
+            }
+        }).start();
+    }
+
+    /**
+     * 异步读取模块状态并回调给 JS（避免冷启动 / 刷新时同步 su 阻塞 JS 引擎）。
+     *
+     * <p>在后台线程调用 {@link #getStatusSync()}，再经由 {@code webView.evaluateJavascript}
+     * 在 UI 线程调用 {@code callback('<json>')}（JSON 由 {@link JSONObject#quote} 包裹为字符串字面量）。
+     *
+     * @param callback 形如 "window.__onStatus" 的全局函数名，回调形如 {@code callback('{"enabled":true}')}
+     */
+    @JavascriptInterface
+    public void getStatusAsync(final String callback) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final String json = getStatusSync();
+                final String js = callback + "(" + JSONObject.quote(json) + ")";
+                final WebView wv = webView;
+                if (wv != null) {
+                    wv.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            wv.evaluateJavascript(js, null);
+                        }
+                    });
+                }
+            }
+        }).start();
+    }
+
+    /**
+     * 异步读取模块 config.sh 变量值并回调给 JS（避免同步 su 阻塞 JS 引擎）。
+     *
+     * <p>在后台线程调用 {@link #getConfigSync(String)}，再经由 {@code webView.evaluateJavascript}
+     * 在 UI 线程调用 {@code callback('<json>')}（JSON 由 {@link JSONObject#quote} 包裹为字符串字面量）。
+     *
+     * @param key 白名单键（如 "SKIP_ADSDK"）
+     * @param callback 形如 "window.__onAdsdk" 的全局函数名，回调形如 {@code callback('{"value":"0"}')}
+     */
+    @JavascriptInterface
+    public void getConfigAsync(final String key, final String callback) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final String json = getConfigSync(key);
+                final String js = callback + "(" + JSONObject.quote(json) + ")";
+                final WebView wv = webView;
+                if (wv != null) {
+                    wv.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            wv.evaluateJavascript(js, null);
+                        }
+                    });
+                }
+            }
+        }).start();
     }
 
     // ============================================================

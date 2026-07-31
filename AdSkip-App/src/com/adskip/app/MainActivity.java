@@ -42,6 +42,8 @@ public class MainActivity extends Activity {
 
         webView.setWebViewClient(new WebViewClient());
         bridge = new AdSkipBridge(this);
+        // 注入 WebView，供异步桥方法在后台 su 完成后切回 UI 线程回调 JS（修复冷启动黑屏）
+        bridge.setWebView(webView);
         // 暴露桥对象给 JS，名称 AdSkipBridge
         webView.addJavascriptInterface(bridge, "AdSkipBridge");
         webView.loadUrl("file:///android_asset/index.html");

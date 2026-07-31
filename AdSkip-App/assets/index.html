@@ -218,6 +218,38 @@
   .tab .tab-label{font-size:10px;font-weight:600;letter-spacing:0.2px;}
   .tab.active{background:var(--accent);color:#fff;}
   .tab.active svg{color:#fff;}
+
+  /* ===== 开屏跳过 Tab ===== */
+  .page.skip{gap:14px;}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;}
+  .chip{
+    display:inline-flex;align-items:center;gap:6px;
+    padding:8px 12px;border-radius:999px;
+    background:rgba(255,255,255,0.06);border:1px solid var(--border);
+    font-size:13px;font-weight:500;color:var(--text);cursor:pointer;user-select:none;
+    transition:background .2s,border-color .2s,color .2s;
+  }
+  .chip.on{background:rgba(0,230,118,0.12);border-color:rgba(0,230,118,0.32);color:var(--accent);}
+  .chip .x{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:16px;height:16px;border-radius:50%;
+    background:rgba(255,255,255,0.10);color:var(--text-2);font-size:12px;line-height:1;
+  }
+  .chip .x:hover{background:rgba(255,77,79,0.35);color:#fff;}
+  .chip-input{display:flex;gap:8px;margin-top:8px;}
+  .chip-text{
+    flex:1;height:38px;border-radius:12px;background:rgba(255,255,255,0.05);
+    border:1px solid var(--border);color:var(--text);padding:0 12px;
+    font-family:inherit;font-size:13px;outline:none;
+  }
+  .chip-text:focus{border-color:rgba(0,230,118,0.4);}
+  .chip-add{
+    height:38px;padding:0 16px;border-radius:12px;
+    border:1px solid rgba(0,230,118,0.4);background:rgba(0,230,118,0.12);
+    color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;
+  }
+  .chip-add:active{background:rgba(0,230,118,0.22);}
+  .skip-empty{font-size:12.5px;color:var(--text-3);}
 </style>
 </head>
 <body>
@@ -344,6 +376,14 @@
           </div>
           <div class="toggle" id="onlineUpdateToggle" data-action="config:ONLINE_UPDATE"></div>
         </div>
+
+        <div class="row-card glass">
+          <div class="rl">
+            <div class="rt">广告 SDK 域名增强（v1.1）</div>
+            <div class="rs">开启后 rebuild 将纯广告 SDK 域写入 hosts（默认关，绝不误伤播放域）</div>
+          </div>
+          <div class="toggle" id="adsdkToggle"></div>
+        </div>
       </section>
 
       <!-- ============ PAGE: LOGS ============ -->
@@ -363,6 +403,59 @@
         </div>
 
         <div class="log-text" id="logText">（加载中…）</div>
+      </section>
+
+      <!-- ============ PAGE: SKIP (开屏跳过) ============ -->
+      <section class="page skip" data-page="skip">
+        <div class="sec-head">
+          <h1>开屏跳过</h1>
+          <span class="badge" id="skipPermBadge">—</span>
+        </div>
+
+        <div class="note-card glass" id="skipPermCard">
+          <div class="nt" id="skipPermTitle">需要无障碍权限</div>
+          <div class="nd" id="skipPermDesc">开屏跳过需要你在系统「无障碍」中启用 AdSkip 服务。未授权时总开关不可用，请先点击下方按钮去开启。</div>
+          <button class="btn" id="skipOpenSettings" style="margin-top:4px;">去开启无障碍权限</button>
+        </div>
+
+        <div class="row-card glass">
+          <div class="rl">
+            <div class="rt">开屏自动跳过（总开关）</div>
+            <div class="rs" id="skipMasterDesc">启用后，在已授权 App 的开屏 / 弹窗自动点击「跳过」按钮（含防误触排除）</div>
+          </div>
+          <div class="toggle" id="skipMasterToggle"></div>
+        </div>
+
+        <div class="count-big glass">
+          <span class="cv" id="skipToday">0</span>
+          <span class="ck">今日已自动跳过次数</span>
+        </div>
+
+        <div class="sec-title">启用应用（点击切换）</div>
+        <div class="chips" id="skipApps"></div>
+        <div class="nd" style="color:var(--text-3);font-size:12px;margin-top:6px;">列表为空 = 对所有应用关闭。默认 4 大音乐 App，点击标签切换启用。</div>
+
+        <div class="sec-title" style="margin-top:4px;">跳过关键词（锚定按钮文案）</div>
+        <div class="chips" id="skipKeywords"></div>
+        <div class="chip-input">
+          <input id="skipKeywordInput" class="chip-text" placeholder="新增跳过关键词（正则片段）…" />
+          <button class="chip-add" id="skipKeywordAdd">添加</button>
+        </div>
+
+        <div class="sec-title" style="margin-top:4px;">防误触白名单（整窗命中则不点）</div>
+        <div class="chips" id="skipExcludes"></div>
+        <div class="chip-input">
+          <input id="skipExcludeInput" class="chip-text" placeholder="新增排除词（正则片段）…" />
+          <button class="chip-add" id="skipExcludeAdd">添加</button>
+        </div>
+
+        <div class="row-card glass" style="margin-top:6px;">
+          <div class="rl">
+            <div class="rt">仅 WiFi 下跳过（P2）</div>
+            <div class="rs">开启后仅在 WiFi 网络下自动跳过（需网络状态权限；当前未授予时等效关闭此限制）</div>
+          </div>
+          <div class="toggle" id="skipWifiToggle"></div>
+        </div>
       </section>
 
     </div>
@@ -385,6 +478,10 @@
         <div class="tab" data-tab="logs">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 6h14M5 12h14M5 18h9" stroke-linecap="round"/></svg>
           <span class="tab-label">日志</span>
+        </div>
+        <div class="tab" data-tab="skip">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 5v14l8-7zM15 5h2v14h-2z"/></svg>
+          <span class="tab-label">开屏跳过</span>
         </div>
       </div>
     </nav>
@@ -472,6 +569,22 @@
     // logs top
     $("logCount").textContent = (s.listCount != null ? s.listCount : 0);
     $("logVersion").textContent = s.version || "-";
+
+    // v1.1：广告 SDK 域名增强开关（hosts 线，独立于无障碍线）
+    refreshAdsdk();
+  }
+
+  // ---- 读取并刷新广告 SDK 域名增强开关（hosts 线） ----
+  function refreshAdsdk(){
+    var el = $("adsdkToggle");
+    if (!el) return;
+    try {
+      var raw = AdSkipBridge.getConfig("SKIP_ADSDK");
+      var o = JSON.parse(raw);
+      setToggle("adsdkToggle", o && o.value === "1");
+    } catch(e){
+      setToggle("adsdkToggle", false);
+    }
   }
 
   function renderEmpty(){
@@ -536,6 +649,7 @@
         document.querySelector(".screen-body").scrollTop = 0;
         if (name === "home" || name === "modules") refresh();
         else if (name === "logs") loadLog();
+        else if (name === "skip") refreshSkip();
       });
     }
   }
@@ -579,11 +693,231 @@
     });
   }
 
+  // ---- 开屏跳过 Tab ----
+  function refreshSkip(){
+    var raw;
+    try { raw = AdSkipBridge.getSkipConfig(); } catch(e){ raw = '{"error":true}'; }
+    var cfg;
+    try { cfg = JSON.parse(raw); } catch(e){ cfg = { error: true }; }
+    if (cfg && cfg.error){
+      setToggle("skipMasterToggle", false);
+      var b = $("skipPermBadge");
+      if (b){ b.textContent = "读取失败"; }
+      return;
+    }
+    renderSkip(cfg);
+  }
+
+  function renderSkip(cfg){
+    // 权限徽标
+    var badge = $("skipPermBadge");
+    if (cfg.permission){
+      badge.textContent = "已授权";
+      badge.style.background = "rgba(0,230,118,0.10)";
+      badge.style.borderColor = "rgba(0,230,118,0.25)";
+      badge.style.color = "var(--accent)";
+      $("skipPermCard").style.display = "none";
+    } else {
+      badge.textContent = "未授权";
+      badge.style.background = "rgba(255,176,32,0.10)";
+      badge.style.borderColor = "rgba(255,176,32,0.30)";
+      badge.style.color = "var(--amber)";
+      $("skipPermCard").style.display = "flex";
+    }
+
+    // 总开关（未授权时禁用）
+    setToggle("skipMasterToggle", cfg.enable);
+    var master = $("skipMasterToggle");
+    if (!cfg.permission){
+      master.style.opacity = "0.4";
+      master.style.pointerEvents = "none";
+    } else {
+      master.style.opacity = "1";
+      master.style.pointerEvents = "auto";
+    }
+
+    // 今日次数
+    $("skipToday").textContent = (cfg.todayCount != null ? cfg.todayCount : 0);
+
+    // 启用 App 列表
+    renderAppChips(cfg.enabledApps || []);
+
+    // 跳过关键词 / 防误触白名单
+    renderKeywordChips("skipKeywords", cfg.skipKeywords || []);
+    renderKeywordChips("skipExcludes", cfg.excludeKeywords || []);
+
+    // WiFi only
+    setToggle("skipWifiToggle", cfg.wifiOnly);
+  }
+
+  function renderAppChips(apps){
+    var box = $("skipApps");
+    box.innerHTML = "";
+    var defaults = ["com.netease.cloudmusic","com.tencent.qqmusic","com.kugou.fan","cn.kuwo.player"];
+    var all = [], seen = {}, i;
+    for (i = 0; i < apps.length; i++){ if (!seen[apps[i]]){ seen[apps[i]] = 1; all.push(apps[i]); } }
+    for (i = 0; i < defaults.length; i++){ if (!seen[defaults[i]]){ seen[defaults[i]] = 1; all.push(defaults[i]); } }
+    if (all.length === 0){
+      box.innerHTML = '<span class="skip-empty">（无启用应用，跳过对所有应用关闭）</span>';
+      return;
+    }
+    var current = {};
+    for (i = 0; i < apps.length; i++) current[apps[i]] = 1;
+    for (i = 0; i < all.length; i++){
+      (function(pkg){
+        var on = !!current[pkg];
+        var chip = document.createElement("div");
+        chip.className = "chip" + (on ? " on" : "");
+        chip.textContent = appLabel(pkg);
+        chip.dataset.pkg = pkg;
+        chip.addEventListener("click", function(){
+          this.classList.toggle("on");
+          commitApps();
+        });
+        box.appendChild(chip);
+      })(all[i]);
+    }
+  }
+
+  function commitApps(){
+    var chips = document.querySelectorAll("#skipApps .chip");
+    var arr = [];
+    for (var i = 0; i < chips.length; i++){ if (chips[i].classList.contains("on")) arr.push(chips[i].dataset.pkg); }
+    try { AdSkipBridge.setEnabledApps(JSON.stringify(arr)); } catch(e){}
+    setTimeout(refreshSkip, 200);
+  }
+
+  function renderKeywordChips(boxId, list){
+    var box = $(boxId);
+    box.innerHTML = "";
+    if (!list || list.length === 0){
+      box.innerHTML = '<span class="skip-empty">（空）</span>';
+      return;
+    }
+    for (var i = 0; i < list.length; i++){
+      (function(kw){
+        var chip = document.createElement("div");
+        chip.className = "chip on";
+        var span = document.createElement("span");
+        span.textContent = kw;
+        var x = document.createElement("span");
+        x.className = "x";
+        x.textContent = "×";
+        x.title = "移除";
+        x.addEventListener("click", function(ev){
+          ev.stopPropagation();
+          removeKeyword(boxId, kw);
+        });
+        chip.appendChild(span);
+        chip.appendChild(x);
+        box.appendChild(chip);
+      })(list[i]);
+    }
+  }
+
+  function removeKeyword(boxId, kw){
+    var cfg = readSkipCfg();
+    if (!cfg) return;
+    var key = (boxId === "skipKeywords") ? "skipKeywords" : "excludeKeywords";
+    var cur = (key === "skipKeywords") ? (cfg.skipKeywords || []) : (cfg.excludeKeywords || []);
+    var next = [];
+    for (var i = 0; i < cur.length; i++){ if (cur[i] !== kw) next.push(cur[i]); }
+    try {
+      if (key === "skipKeywords") AdSkipBridge.setSkipKeywords(JSON.stringify(next));
+      else AdSkipBridge.setExcludeKeywords(JSON.stringify(next));
+    } catch(e){}
+    setTimeout(refreshSkip, 200);
+  }
+
+  function addKeyword(boxId){
+    var inputId = (boxId === "skipKeywords") ? "skipKeywordInput" : "skipExcludeInput";
+    var input = $(inputId);
+    var val = (input.value || "").trim();
+    if (!val) return;
+    var cfg = readSkipCfg();
+    if (!cfg) return;
+    var key = (boxId === "skipKeywords") ? "skipKeywords" : "excludeKeywords";
+    var cur = (key === "skipKeywords") ? (cfg.skipKeywords || []) : (cfg.excludeKeywords || []);
+    for (var i = 0; i < cur.length; i++){ if (cur[i] === val){ input.value = ""; return; } }
+    cur.push(val);
+    try {
+      if (key === "skipKeywords") AdSkipBridge.setSkipKeywords(JSON.stringify(cur));
+      else AdSkipBridge.setExcludeKeywords(JSON.stringify(cur));
+    } catch(e){}
+    input.value = "";
+    setTimeout(refreshSkip, 200);
+  }
+
+  function readSkipCfg(){
+    var raw;
+    try { raw = AdSkipBridge.getSkipConfig(); } catch(e){ return null; }
+    try { return JSON.parse(raw); } catch(e){ return null; }
+  }
+
+  function appLabel(pkg){
+    var map = {
+      "com.netease.cloudmusic":"网易云音乐",
+      "com.tencent.qqmusic":"QQ音乐",
+      "com.kugou.fan":"酷狗概念版",
+      "cn.kuwo.player":"酷我音乐"
+    };
+    return map[pkg] || pkg;
+  }
+
+  function bindSkip(){
+    $("skipOpenSettings").addEventListener("click", function(){
+      try { AdSkipBridge.openAccessibilitySettings(); } catch(e){}
+    });
+    $("skipMasterToggle").addEventListener("click", function(){
+      var cfg = readSkipCfg();
+      if (!cfg || !cfg.permission){
+        try { AdSkipBridge.openAccessibilitySettings(); } catch(e){}
+        return;
+      }
+      var nowOn = !this.classList.contains("on");
+      this.classList.toggle("on", nowOn);
+      try { AdSkipBridge.setSkipEnable(nowOn ? "true" : "false"); } catch(e){}
+      setTimeout(refreshSkip, 250);
+    });
+    $("skipWifiToggle").addEventListener("click", function(){
+      var nowOn = !this.classList.contains("on");
+      this.classList.toggle("on", nowOn);
+      try { AdSkipBridge.setWifiOnly(nowOn ? "true" : "false"); } catch(e){}
+      setTimeout(refreshSkip, 250);
+    });
+    $("skipKeywordAdd").addEventListener("click", function(){ addKeyword("skipKeywords"); });
+    $("skipKeywordInput").addEventListener("keydown", function(e){ if (e.key === "Enter") addKeyword("skipKeywords"); });
+    $("skipExcludeAdd").addEventListener("click", function(){ addKeyword("skipExcludes"); });
+    $("skipExcludeInput").addEventListener("keydown", function(e){ if (e.key === "Enter") addKeyword("skipExcludes"); });
+  }
+
+  function bindAdsdk(){
+    var el = $("adsdkToggle");
+    if (!el) return;
+    el.addEventListener("click", function(){
+      if (!hasRootOk){
+        showBanner("本应用需要 Root 权限（KernelSU / Magisk / APatch）才能管理模块");
+        return;
+      }
+      var nowOn = !this.classList.contains("on");
+      this.classList.toggle("on", nowOn);
+      try {
+        // hosts 线开关值用 "1"/"0"（与 config.sh 的判等一致）
+        AdSkipBridge.setConfig("SKIP_ADSDK", nowOn ? "1" : "0");
+        // 写回后重新生成 hosts，使开关即时生效（覆盖挂载同 inode）
+        AdSkipBridge.runAction("rebuild");
+      } catch(e){}
+      setTimeout(refreshAdsdk, 450);
+    });
+  }
+
   // ---- 初始化 ----
   function init(){
     bindTabs();
     bindToggles();
     bindUpdate();
+    bindSkip();
+    bindAdsdk();
     try {
       hasRootOk = (typeof AdSkipBridge !== "undefined") && (AdSkipBridge.hasRoot() === "true");
     } catch(e){ hasRootOk = false; }

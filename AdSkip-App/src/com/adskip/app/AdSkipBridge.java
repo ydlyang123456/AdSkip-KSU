@@ -1,13 +1,23 @@
 package com.adskip.app;
 
 import android.annotation.SuppressLint;
+import android.content.ContentResolver;
+import android.content.Intent;
+import android.os.Build;
+import android.provider.Settings;
 import android.webkit.JavascriptInterface;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -27,8 +37,11 @@ import java.util.concurrent.TimeUnit;
 @SuppressLint("AddJavascriptInterface")
 public class AdSkipBridge {
 
-    /** 宿主 Activity（用于未来扩展，如 UI 回调）。 */
+    /** 宿主 Activity（用于 UI 线程跳转无障碍设置）。 */
     private final MainActivity activity;
+
+    /** 无障碍线本地配置（SharedPreferences）。 */
+    private final AdSkipPrefs prefs;
 
     /** root 检测结果缓存（null 表示尚未检测）。 */
     private Boolean cachedRoot = null;
@@ -40,6 +53,7 @@ public class AdSkipBridge {
      */
     public AdSkipBridge(MainActivity activity) {
         this.activity = activity;
+        this.prefs = new AdSkipPrefs(activity);
     }
 
     /** 模块脚本路径与运行目录（与 AdSkip-KSU 模块保持一致）。 */
@@ -198,7 +212,8 @@ public class AdSkipBridge {
 
     /** 允许写入的白名单配置键。 */
     private static final String[] CONFIG_KEYS = {
-            "ONLINE_UPDATE", "DISABLE_PRIVATE_DNS", "REDIRECT_IPV4", "REDIRECT_IPV6"
+            "ONLINE_UPDATE", "DISABLE_PRIVATE_DNS", "REDIRECT_IPV4", "REDIRECT_IPV6",
+            "SKIP_ADSDK"
     };
 
     /**
@@ -246,5 +261,281 @@ public class AdSkipBridge {
         RootResult r = runAsRoot("tail -n " + lines + " " + MODULE_DIR
                 + "/action.log 2>/dev/null || echo ''");
         return r.output == null ? "" : r.output;
+    }
+
+    // ============================================================
+    // v1.1：模块开关联动（hosts 线，走 su / config.sh）
+    // ============================================================
+
+    /**
+     * 读取模块 config.sh 变量值（白名单键）。供 UI 显示 hosts 开关状态（如 SKIP_ADSDK）。
+     *
+     * @return {@code {"value":"0"}} 成功；{@code {"error":"bad_cmd"}} 非法键；
+     *         {@code {"error":true}} 读取失败
+     */
+    @JavascriptInterface
+    public String getConfig(String key) {
+        if (key == null) {
+            return "{\"error\":\"bad_cmd\"}";
+        }
+        boolean ok = false;
+        for (String k : CONFIG_KEYS) {
+            if (k.equals(key)) {
+                ok = true;
+                break;
+            }
+        }
+        if (!ok) {
+            return "{\"error\":\"bad_cmd\"}";
+        }
+        // 经 AdSkipPrefs 统一走 su 读取 config.sh（内部已做键名白名单校验）
+        String val = prefs.getConfigFromShell(key);
+        try {
+            JSONObject o = new JSONObject();
+            o.put("value", val == null ? "" : val);
+            return o.toString();
+        } catch (JSONException e) {
+            return "{\"error\":true}";
+        }
+    }
+
+    // ============================================================
+    // v1.1：无障碍开屏跳过（本地 SharedPreferences，免 root，无命令执行）
+    // ============================================================
+
+    /**
+     * 检测本无障碍服务是否已在系统设置中启用。
+     *
+     * @return "true" / "false"
+     */
+    @JavascriptInterface
+    public String isAccessibilityEnabled() {
+        try {
+            ContentResolver cr = activity.getContentResolver();
+            String enabled = Settings.Secure.getString(cr,
+                    Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+            if (enabled != null && enabled.contains(
+                    "com.adskip.app/com.adskip.app.AdSkipAccessibilityService")) {
+                return "true";
+            }
+        } catch (Exception e) {
+            // 读取失败视为未启用
+        }
+        return "false";
+    }
+
+    /**
+     * UI 线程跳转到系统无障碍设置页（供用户授权）。
+     *
+     * @return "ok"
+     */
+    @JavascriptInterface
+    public String openAccessibilitySettings() {
+        if (activity == null) {
+            return "error";
+        }
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Intent i = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    activity.startActivity(i);
+                } catch (Exception e) {
+                    // 跳转失败忽略
+                }
+            }
+        });
+        return "ok";
+    }
+
+    /**
+     * 一次性返回全部无障碍配置 + 权限状态（供「开屏跳过」页渲染）。
+     *
+     * @return JSON（见设计文档 §3.4 示例）
+     */
+    @JavascriptInterface
+    public String getSkipConfig() {
+        try {
+            boolean permission = "true".equals(isAccessibilityEnabled());
+            boolean enable = prefs.isSkipEnabled();
+            Set<String> apps = prefs.getEnabledApps();
+            Set<String> skipKw = prefs.getSkipKeywords();
+            Set<String> exKw = prefs.getExcludeKeywords();
+
+            JSONObject o = new JSONObject();
+            o.put("permission", permission);
+            o.put("enable", enable);
+            o.put("enabledApps", new JSONArray(apps));
+            o.put("enabledAppCount", apps.size());
+            o.put("skipKeywords", new JSONArray(skipKw));
+            o.put("excludeKeywords", new JSONArray(exKw));
+            o.put("wifiOnly", prefs.isWifiOnly());
+            o.put("skipDelayMs", prefs.getSkipDelayMs());
+            o.put("subwindowExclude", prefs.isSubwindowExclude());
+            o.put("todayCount", prefs.getTodayCount());
+            return o.toString();
+        } catch (JSONException e) {
+            return "{\"error\":true}";
+        }
+    }
+
+    /**
+     * 写 ENABLE_SKIP（总开关）。开启时（API>=31）尝试启动前台保活；关闭时停止。
+     *
+     * @return {@code {"ok":true}}
+     */
+    @JavascriptInterface
+    public String setSkipEnable(String v) {
+        if (v == null) {
+            return "{\"error\":\"bad_value\"}";
+        }
+        boolean on = "true".equals(v) || "1".equals(v);
+        prefs.putBool(AdSkipPrefs.KEY_ENABLE_SKIP, on);
+        if (on) {
+            startKeepAliveIfNeeded();
+        } else {
+            stopKeepAliveIfNeeded();
+        }
+        return "{\"ok\":true}";
+    }
+
+    /**
+     * 覆盖写 ENABLED_APPS（启用 App 包名集合）。
+     *
+     * @param json JSON 数组字符串，如 ["com.netease.cloudmusic",...]
+     * @return {@code {"ok":true}} / {@code {"error":"bad_value"}}
+     */
+    @JavascriptInterface
+    public String setEnabledApps(String json) {
+        if (json == null) {
+            return "{\"error\":\"bad_value\"}";
+        }
+        try {
+            JSONArray arr = new JSONArray(json);
+            Set<String> set = new LinkedHashSet<>();
+            for (int i = 0; i < arr.length(); i++) {
+                String s = arr.optString(i);
+                if (s != null && !s.isEmpty()) {
+                    set.add(s);
+                }
+            }
+            prefs.putStringSet(AdSkipPrefs.KEY_ENABLED_APPS, set);
+            return "{\"ok\":true}";
+        } catch (JSONException e) {
+            return "{\"error\":\"bad_value\"}";
+        }
+    }
+
+    /**
+     * 覆盖写 SKIP_KEYWORDS（跳过按钮文案正则片段）。
+     *
+     * @param json JSON 数组字符串
+     * @return {@code {"ok":true}} / {@code {"error":"bad_value"}}
+     */
+    @JavascriptInterface
+    public String setSkipKeywords(String json) {
+        if (json == null) {
+            return "{\"error\":\"bad_value\"}";
+        }
+        try {
+            JSONArray arr = new JSONArray(json);
+            Set<String> set = new LinkedHashSet<>();
+            for (int i = 0; i < arr.length(); i++) {
+                String s = arr.optString(i);
+                if (s != null && !s.isEmpty()) {
+                    set.add(s);
+                }
+            }
+            prefs.putStringSet(AdSkipPrefs.KEY_SKIP_KEYWORDS, set);
+            return "{\"ok\":true}";
+        } catch (JSONException e) {
+            return "{\"error\":\"bad_value\"}";
+        }
+    }
+
+    /**
+     * 覆盖写 EXCLUDE_KEYWORDS（防误触排除词）。
+     *
+     * @param json JSON 数组字符串
+     * @return {@code {"ok":true}} / {@code {"error":"bad_value"}}
+     */
+    @JavascriptInterface
+    public String setExcludeKeywords(String json) {
+        if (json == null) {
+            return "{\"error\":\"bad_value\"}";
+        }
+        try {
+            JSONArray arr = new JSONArray(json);
+            Set<String> set = new LinkedHashSet<>();
+            for (int i = 0; i < arr.length(); i++) {
+                String s = arr.optString(i);
+                if (s != null && !s.isEmpty()) {
+                    set.add(s);
+                }
+            }
+            prefs.putStringSet(AdSkipPrefs.KEY_EXCLUDE_KEYWORDS, set);
+            return "{\"ok\":true}";
+        } catch (JSONException e) {
+            return "{\"error\":\"bad_value\"}";
+        }
+    }
+
+    /**
+     * 写 WIFI_ONLY（P2 仅 WiFi 下跳过）。
+     *
+     * @return {@code {"ok":true}}
+     */
+    @JavascriptInterface
+    public String setWifiOnly(String v) {
+        if (v == null) {
+            return "{\"error\":\"bad_value\"}";
+        }
+        boolean on = "true".equals(v) || "1".equals(v);
+        prefs.putBool(AdSkipPrefs.KEY_WIFI_ONLY, on);
+        return "{\"ok\":true}";
+    }
+
+    /**
+     * 读取今日跳过次数。
+     *
+     * @return {@code {"date":"...","count":0}}
+     */
+    @JavascriptInterface
+    public String getSkipStats() {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("date", prefs.getString(AdSkipPrefs.KEY_STATS_DATE, ""));
+            o.put("count", prefs.getTodayCount());
+            return o.toString();
+        } catch (JSONException e) {
+            return "{\"error\":true}";
+        }
+    }
+
+    // ---- 保活辅助（P1） ----
+    private void startKeepAliveIfNeeded() {
+        if (Build.VERSION.SDK_INT >= 31 && activity != null) {
+            try {
+                Intent i = new Intent(activity, AdSkipKeepAliveService.class);
+                if (Build.VERSION.SDK_INT >= 26) {
+                    activity.startForegroundService(i);
+                } else {
+                    activity.startService(i);
+                }
+            } catch (Exception ignored) {
+                // 保活为兜底，失败不影响跳过逻辑
+            }
+        }
+    }
+
+    private void stopKeepAliveIfNeeded() {
+        if (activity != null) {
+            try {
+                activity.stopService(new Intent(activity, AdSkipKeepAliveService.class));
+            } catch (Exception ignored) {
+                // 忽略
+            }
+        }
     }
 }

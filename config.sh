@@ -38,3 +38,18 @@ LOG_FILE="/data/adb/modules/adskip_ksu/action.log"
 
 # 日志级别（debug / info / warn / error），当前仅作为记录档位说明。
 LOG_LEVEL="info"
+
+# ============================================================
+# v1.1：广告 SDK 独立域名增强拦截（hosts 线，默认关闭）
+# ============================================================
+# 仅当 SKIP_ADSDK="1" 时，action.sh rebuild / post-fs-data.sh 生成的 hosts 才会
+# 合并 common/blocklist_adsdk.txt（纯广告投放/竞价域）。
+# 默认 "0"：绝不向 hosts 写入任何广告 SDK 域，满足「默认不误伤播放域」硬约束。
+# 绝不误伤：blocklist_adsdk.txt 只收广告 SDK 服务端域，与 blocklist.txt（319 条原契约）独立，
+# 严禁收录同名内容域 / 播放流 / 音乐 CDN（见 docs/ADSDK_REGRESSION.md）。
+SKIP_ADSDK="0"
+
+# P1：广告 SDK 域在线子清单源（空 = 不在线更新）。
+# 非空时 fetch_adsdk_online 拉取到 common/adsdk_online.txt，随 rebuild 一并合并。
+# 默认空，离线时内置清单仍可正常生效。
+ADSDK_ONLINE_URL=""

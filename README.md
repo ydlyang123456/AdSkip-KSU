@@ -71,6 +71,8 @@ sh /data/adb/modules/adskip_ksu/action.sh disable    # 禁用模块
 | `UPDATE_MIN_AGE_HOURS` | 两次在线更新最小间隔（小时） | `24` |
 | `UPDATE_URLS` | 在线 hosts 源（空格分隔多个 URL） | StevenBlack Unified + notracking + blocklistproject ads/tracking/malware（5 个实测可用、更激进聚合源） |
 | `DISABLE_PRIVATE_DNS` | 是否关闭系统级私有 DNS（Private DNS / DoH） | `true` |
+| `SKIP_ADSDK` | v1.1 广告 SDK 域名增强开关（rebuild 后合并 `blocklist_adsdk.txt`） | `0`（默认关，绝不误伤播放域） |
+| `ADSDK_ONLINE_URL` | v1.1(P1) 广告 SDK 在线子清单源（空=不在线更新） | ``（空） |
 | `LOG_FILE` | 日志路径 | `/data/adb/modules/adskip_ksu/action.log` |
 
 - 想屏蔽自有域名：直接往 `common/blocklist.txt` 追加（每行一个纯域名，可用 `#` 注释）。
@@ -116,6 +118,51 @@ sh /data/adb/modules/adskip_ksu/action.sh disable    # 禁用模块
 4. **如何关闭这两个增强**
    - 关闭多源在线更新：在 `config.sh` 中将 `ONLINE_UPDATE="false"`（离线内置清单仍生效）。
    - 关闭私有 DNS 关闭钩子：在 `config.sh` 中将 `DISABLE_PRIVATE_DNS="false"`。
+
+---
+
+## 五之一、v1.1 去广告增强（双管齐下）
+
+v1.1 在保留 systemless hosts 屏蔽的基础上，**新增两条互不依赖的增强线**，且**默认全部关闭**，遵循「默认不误伤 + 最小惊讶」：
+
+| 增强线 | 机制 | 默认 | 开关 | 生效方式 |
+| --- | --- | --- | --- | --- |
+| **① 广告 SDK 域名增强（hosts 线）** | 把纯广告投放/竞价 SDK 域名追加进 hosts 黑洞 | **关闭** | `SKIP_ADSDK`（模块变量，root 写回） | `action.sh rebuild` / 开机 `post-fs-data.sh` 重新生成 hosts |
+| **② 无障碍开屏自动跳过（App 线）** | `AccessibilityService` 监听开屏，命中「跳过」按钮即点掉 | **关闭** | `ENABLE_SKIP`（App 本地 SharedPreferences，免 root） | 用户在系统无障碍中授权后即时生效 |
+
+### 1. 广告 SDK 域名增强（默认关闭，绝不误伤播放域）
+
+- 广告 SDK 域**独立落到 `common/blocklist_adsdk.txt`**，与 `common/blocklist.txt`（319 条原契约）完全分离；**`blocklist.txt` 保持不变**。
+- 由 `config.sh` 的 `SKIP_ADSDK` 门控：
+  - `SKIP_ADSDK="0"`（**默认**）：`generate_hosts` **绝不**向 hosts 写入任何广告 SDK 域——满足「默认不误伤音乐 App 播放域/内容域/CDN」硬约束。
+  - `SKIP_ADSDK="1"`：`rebuild` 后 hosts 会在 319 条基础上**增量**合并 `blocklist_adsdk.txt`（P1 还会合并在线子清单 `adsdk_online.txt`）。
+- `blocklist_adsdk.txt` **只收广告投放/竞价 SDK 服务端域**（穿山甲 / 广点通 / 快手 / 百度 / 小米 / 阿里妈妈 / InMobi / Unity / AppLovin / Mintegral / ironSource 等），**绝不收录**任何音乐 App 的播放流 / 下载 / 搜索 / 图片 CDN（见 `docs/ADSDK_REGRESSION.md` 误伤禁用域与回归口径）。
+- 误伤豁免：若某 App 因 adsdk 域被误伤，从 `blocklist_adsdk.txt` 移除该域，或直接 `SKIP_ADSDK=0`（整条 hosts 线关闭、不影响无障碍线）。
+
+**如何开启（hosts 线）：**
+
+```sh
+# 1) 写入开关（仅白名单键 + 值格式校验，安全）
+sh /data/adb/modules/adskip_ksu/action.sh   # 用配套 App 的「模块」页开关，或：
+# 经 App：模块页新增的 SKIP_ADSDK 开关 → setConfig("SKIP_ADSDK","1") + 自动 rebuild
+
+# 2) 重新生成 hosts（合并 adsdk 清单）
+sh /data/adb/modules/adskip_ksu/action.sh rebuild
+
+# 3) 查看状态
+sh /data/adb/modules/adskip_ksu/action.sh adsdk
+```
+
+> P1：若 `config.sh` 的 `ADSDK_ONLINE_URL` 非空，`service.sh` 开机后期会 best-effort 拉取在线子清单到 `common/adsdk_online.txt` 并合并；默认空（离线内置清单即生效）。
+
+### 2. 无障碍开屏自动跳过（默认关闭，需用户授权）
+
+- 在系统「无障碍」中启用 **AdSkip** 服务后，App 内的「开屏跳过」页即可开启总开关 `ENABLE_SKIP`。
+- 服务监听目标 App（默认 4 大音乐 App：网易云 / QQ音乐 / 酷狗概念版 / 酷我）的开屏/弹窗，**遍历可点击节点**匹配「跳过」按钮文案（正则锚定按钮文案，避免误匹配「关闭会员」），命中后先做**整窗排除词扫描**（确认支付 / 立即支付 / 开通会员 等），任一命中**不点**，防误触；P1 再加 300ms 延迟 + 可见可点击约束后 `performAction(ACTION_CLICK)`。
+- 启用 App 列表为空 = 等同关闭（对所有 App 不生效），UI 会提示，不做全局兜底。
+- 该线**完全本地**（SharedPreferences，免 root），与 hosts 线解耦、互不影响。
+
+> 双线互补：同一广告可能同时被 hosts 拦请求 + 无障碍点跳过，属预期叠加效果。
 
 ---
 
@@ -192,8 +239,12 @@ AdSkip-KSU/
 │   └── AdSkipManager.apk    # 配套 App（随模块自动安装 / 可手动安装）
 ├── common/
 │   ├── lib.sh               # 公共函数（生成 hosts / 下载 / 日志 / 状态 / 状态 JSON）
-│   ├── blocklist.txt        # 内置静态域名清单
+│   ├── blocklist.txt        # 内置静态域名清单（319 条，v1.1 起保持原契约不变）
+│   ├── blocklist_adsdk.txt  # v1.1 广告 SDK 独立域名清单（仅广告域，由 SKIP_ADSDK 门控）
+│   ├── adsdk_online.txt     # v1.1(P1) 广告 SDK 在线子清单缓存（运行期生成，可 gitignore）
 │   └── downloaded_hosts.txt # 在线清单缓存（自动管理）
+├── docs/
+│   └── ADSDK_REGRESSION.md  # v1.1 广告 SDK 误伤禁用域 + 回归口径
 ├── system/
 │   └── etc/
 │       └── hosts            # 占位兜底（开机由脚本覆写为完整列表）

@@ -1,0 +1,73 @@
+# ============================================================
+# AdSkip-KSU v1.1 · 广告 SDK 独立域名增强清单（blocklist_adsdk.txt）
+# ============================================================
+# 用途：仅收录【纯广告投放 / 竞价 / 归因 SDK 服务端域】。
+# 约束（硬）：
+#   1. 仅含广告 SDK 域，绝不收录任何音乐 App 的播放流 / 下载 / 搜索 / 图片 CDN。
+#   2. 绝不收录同名主站 / 内容域（如 music.163.com、y.qq.com、*.kugou.com 内容域等）。
+#   3. 由 config.sh 的 SKIP_ADSDK 开关门控（默认 0 = 关闭），rebuild 后合并进 hosts。
+#   4. 误伤豁免见 docs/ADSDK_REGRESSION.md：移除该域或置 SKIP_ADSDK=0 即可。
+# 格式：每行一个纯域名；# 注释；空行忽略；与 blocklist.txt 同格式。
+# ============================================================
+
+# ---- 穿山甲 (Pangle) ----
+pangle.io
+use.pangle.io
+c.toutiao.com
+ad.toutiao.com
+
+# ---- 广点通 (GDT / 腾讯广告) ----
+gdt.qq.com
+
+# ---- 快手广告 (KS Ad) ----
+ksads.kuaishou.com
+ad.e.kuaishou.com
+
+# ---- 百度联盟 (Baidu Munion) ----
+mobads.baidu.com
+cpro.baidu.com
+
+# ---- 小米广告 (Xiaomi Ad) ----
+ad.xiaomi.com
+e.ad.xiaomi.com
+
+# ---- 阿里妈妈 / Tanx (Alimama Ad Exchange) ----
+tanx.com
+ad.alimama.com
+
+# ---- InMobi ----
+inmobi.com
+api.inmobi.com
+
+# ---- Unity Ads ----
+unityads.unity3d.com
+ads.unity3d.com
+
+# ---- AppLovin ----
+applovin.com
+api.applovin.com
+
+# ---- Mintegral (汇量) ----
+mintegral.com
+mk.mintegral.com
+
+# ---- ironSource ----
+ironsrc.com
+api.ironsrc.com
+
+# ---- Chartboost ----
+chartboost.com
+
+# ---- Vungle ----
+vungle.com
+api.vungle.com
+
+# ---- AdColony ----
+adcolony.com
+
+# ---- Sigmob (锌财经/广告) ----
+sigmob.cn
+ad.sigmob.cn
+
+# ---- Fyber ----
+fyber.com

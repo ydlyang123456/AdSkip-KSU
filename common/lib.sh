@@ -24,39 +24,65 @@ detect_manager() {
     done
 }
 
+# ---- 将单个 blocklist 文件逐行注入到 _out（双栈黑洞，skip 注释/空行/畸形行） ----
+# 参数：$1 = blocklist 文件路径
+_emit_blocklist() {
+    _bf="$1"
+    [ -f "$_bf" ] || return 0
+    while IFS= read -r _line || [ -n "$_line" ]; do
+        _domain=$(printf '%s' "$_line" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        [ -z "$_domain" ] && continue
+        case "$_domain" in
+            \#*) continue ;;
+        esac
+        # 跳过含空格的畸形行（应为纯域名）
+        case "$_domain" in
+            *" "*) continue ;;
+        esac
+        echo "$REDIRECT_IPV4 $_domain" >> "$_out"
+        echo "$REDIRECT_IPV6 $_domain" >> "$_out"
+    done < "$_bf"
+}
+
 # ---- 就地生成最终 hosts（保持同一 inode，避免覆盖挂载失效） ----
 generate_hosts() {
     _out="$MODDIR/system/etc/hosts"
     _blk="$MODDIR/common/blocklist.txt"
     _dl="$MODDIR/common/downloaded_hosts.txt"
+    _adsdk="$MODDIR/common/blocklist_adsdk.txt"
+    _adsdk_online="$MODDIR/common/adsdk_online.txt"
     mkdir -p "$MODDIR/system/etc" 2>/dev/null
 
     # 文件头 + 基础行（用 > 截断同一 inode 写入）
     {
         echo "# AdSkip-KSU auto-generated hosts"
         echo "# Generated: $(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null)"
-        echo "# Sources: 内置清单 common/blocklist.txt + 缓存的在线清单 common/downloaded_hosts.txt"
+        if [ "$SKIP_ADSDK" = "1" ]; then
+            echo "# Sources: 内置清单 blocklist.txt + 广告 SDK 清单 blocklist_adsdk.txt（SKIP_ADSDK=1）+ 缓存在线清单"
+        else
+            echo "# Sources: 内置清单 blocklist.txt + 缓存的在线清单（SKIP_ADSDK=0：未合并广告 SDK 域）"
+        fi
         echo "# 请勿手动编辑本文件，改 config.sh / blocklist.txt 后由脚本重新生成。"
         echo ""
         echo "127.0.0.1 localhost"
         echo "::1 localhost"
     } > "$_out"
 
-    # 处理内置 blocklist：逐行读取，跳过空行与 # 注释，每个域名同时生成 IPv4/IPv6 两条
-    if [ -f "$_blk" ]; then
-        while IFS= read -r _line || [ -n "$_line" ]; do
-            _domain=$(printf '%s' "$_line" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            [ -z "$_domain" ] && continue
-            case "$_domain" in
-                \#*) continue ;;
-            esac
-            # 跳过含空格的畸形行（应为纯域名）
-            case "$_domain" in
-                *" "*) continue ;;
-            esac
-            echo "$REDIRECT_IPV4 $_domain" >> "$_out"
-            echo "$REDIRECT_IPV6 $_domain" >> "$_out"
-        done < "$_blk"
+    # 处理内置 blocklist（319 条原契约，恒生效）
+    _emit_blocklist "$_blk"
+
+    # v1.1：仅在 SKIP_ADSDK=1 时合并广告 SDK 独立清单（绝不误伤播放域；默认关闭）
+    if [ "$SKIP_ADSDK" = "1" ]; then
+        _emit_blocklist "$_adsdk"
+        # P1：合并 SDK 在线子清单缓存（若存在且非空）
+        if [ -s "$_adsdk_online" ]; then
+            _emit_blocklist "$_adsdk_online"
+            log_msg "info" "generate_hosts: merged blocklist_adsdk.txt + adsdk_online.txt (SKIP_ADSDK=1)"
+        else
+            log_msg "info" "generate_hosts: merged blocklist_adsdk.txt (SKIP_ADSDK=1)"
+        fi
+    else
+        log_msg "info" "generate_hosts: SKIP_ADSDK=0, adsdk domains NOT written to hosts"
     fi
 
     # 追加缓存的在线清单（已是 hosts 格式，原样追加；-s 确保非空才追加）
@@ -121,6 +147,31 @@ fetch_online() {
     fi
     rm -f "$_tmp" 2>/dev/null
     log_msg "warn" "online update failed, keeping cached list"
+    return 1
+}
+
+# ---- P1：拉取广告 SDK 在线子清单，刷新 adsdk_online.txt（失败则保留旧文件） ----
+# 仅当 config.sh 的 ADSDK_ONLINE_URL 非空时有效；多源容错沿用 _fetch_one 范式。
+fetch_adsdk_online() {
+    [ -n "$ADSDK_ONLINE_URL" ] || { log_msg "info" "ADSDK_ONLINE_URL empty, skip adsdk online fetch"; return 1; }
+    _dst="$MODDIR/common/adsdk_online.txt"
+    _tmp="$MODDIR/common/.adsdk.tmp"
+    : > "$_tmp"
+    if _fetch_one "$ADSDK_ONLINE_URL" "$_tmp"; then
+        # 归一化：去回车、跳注释/空行、已带 IP 前缀的原样保留、裸域名补 REDIRECT_IPV4 前缀。
+        tr -d '\r' < "$_tmp" | awk -v ip="$REDIRECT_IPV4" '
+            $0 == "" { next }
+            $0 ~ /^#/ { next }
+            { gsub(/^[[:space:]]+|[[:space:]]+$/, "", $0); if ($0 == "") next }
+            $1 ~ /^[0-9a-fA-F:.]+$/ { print $0; next }
+            { print ip" "$0 }
+        ' > "$_dst"
+        rm -f "$_tmp" 2>/dev/null
+        log_msg "info" "adsdk online list updated"
+        return 0
+    fi
+    rm -f "$_tmp" 2>/dev/null
+    log_msg "warn" "adsdk online fetch failed, keeping cached list"
     return 1
 }
 

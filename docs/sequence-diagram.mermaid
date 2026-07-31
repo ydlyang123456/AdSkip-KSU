@@ -1,0 +1,87 @@
+%% 4.1 无障碍：命中 -> 排除 -> 延迟 -> 点击
+sequenceDiagram
+    participant SYS as Android System
+    participant SVC as AdSkipAccessibilityService
+    participant PRE as AdSkipPrefs
+    participant RGX as AdSkipRegex
+    participant NODE as AccessibilityNodeInfo
+
+    SYS->>SVC: onAccessibilityEvent(TYPE_WINDOW_STATE_CHANGED)
+    SVC->>PRE: getBool(ENABLE_SKIP)
+    alt ENABLE_SKIP=false
+        SVC-->>SYS: return (功能关闭)
+    else 已开启
+        SVC->>SYS: event.getPackageName()
+        SVC->>PRE: getStringSet(ENABLED_APPS)
+        alt 包名不在启用列表
+            SVC-->>SYS: return (非目标 App)
+        else 目标 App
+            SVC->>SVC: root = getRootInActiveWindow()
+            loop 遍历可点击节点
+                SVC->>RGX: matchesSkip(node.text)
+                RGX-->>SVC: 命中?
+            end
+            alt 命中跳过按钮
+                SVC->>SVC: isExcluded(root)
+                SVC->>RGX: containsExclude(windowText)
+                RGX-->>SVC: 含排除词?
+                alt 含支付/会员等排除词 (含 P1 整窗)
+                    SVC-->>SYS: 不点击（防误触）
+                else 不误触
+                    SVC->>PRE: getInt(SKIP_DELAY_MS)  (P1=300)
+                    SVC->>NODE: 延迟后 performAction(ACTION_CLICK)
+                    NODE-->>SYS: 完成点击
+                    SVC->>PRE: incTodayCount()
+                end
+            end
+        end
+    end
+
+%% 4.2 hosts 增强：开关 -> rebuild 生效
+sequenceDiagram
+    participant UI as WebView(index.html)
+    participant BR as AdSkipBridge
+    participant SU as su -c
+    participant AC as action.sh
+    participant LIB as lib.sh:generate_hosts
+    participant CFG as config.sh
+
+    UI->>BR: setConfig("SKIP_ADSDK","1")
+    BR->>SU: sed -i 's/^SKIP_ADSDK=.*/SKIP_ADSDK="1"/' config.sh
+    SU-->>BR: ok
+    UI->>BR: runAction("rebuild")
+    BR->>SU: sh action.sh rebuild
+    SU->>AC: rebuild
+    AC->>LIB: generate_hosts()
+    LIB->>CFG: read SKIP_ADSDK
+    alt SKIP_ADSDK=1
+        LIB->>LIB: 合并 blocklist.txt + blocklist_adsdk.txt (+P1 adsdk_online.txt)
+    else SKIP_ADSDK=0 (默认)
+        LIB->>LIB: 仅合并 blocklist.txt（不含 SDK 域）
+    end
+    LIB-->>SU: system/etc/hosts 就地重生成(同 inode，覆盖挂载即时生效)
+    SU-->>BR: ok
+    BR-->>UI: ok（建议清 DNS 缓存）
+    Note over UI,SYS: 开机亦可：post-fs-data.sh 启动即按当前 SKIP_ADSDK 生成
+
+%% 4.3 权限引导流程
+sequenceDiagram
+    participant UI as 开屏跳过 Tab
+    participant BR as AdSkipBridge
+    participant ACT as MainActivity
+    participant SET as 系统无障碍设置
+    participant SVC as AdSkipAccessibilityService
+
+    UI->>BR: getSkipConfig()
+    BR->>BR: isAccessibilityEnabled()
+    BR-->>UI: {permission:false}
+    UI->>UI: 用户打开总开关 ENABLE_SKIP
+    UI->>BR: openAccessibilitySettings()
+    BR->>ACT: runOnUiThread(startActivity(ACTION_ACCESSIBILITY_SETTINGS))
+    ACT->>SET: 跳转设置页
+    SET-->>ACT: 用户授权后返回
+    ACT->>SVC: 系统绑定服务 onServiceConnected()
+    SVC->>BR: isAccessibilityEnabled()=true
+    UI->>BR: getSkipConfig()
+    BR-->>UI: {permission:true, enable:true}
+    Note over UI: 未授权时总开关不可用并提示「请在系统无障碍中启用 AdSkip」

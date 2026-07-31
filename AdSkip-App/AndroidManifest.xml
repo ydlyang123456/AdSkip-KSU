@@ -1,12 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.adskip.app"
-    android:versionCode="100"
-    android:versionName="1.0.0">
+    android:versionCode="110"
+    android:versionName="1.1.0">
 
     <uses-sdk
         android:minSdkVersion="23"
         android:targetSdkVersion="34" />
+
+    <!-- 无障碍服务必备（系统强制绑定用） -->
+    <uses-permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE" />
+
+    <!-- P1：前台保活（specialUse）所需权限；API>=31 声明，低版本被忽略 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <!-- P1：开机 / 应用更新后自启保活 -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- 注意：本 App 不声明 INTERNET / ACCESS_NETWORK_STATE，保持「无网络权限」契约 -->
 
     <application
         android:allowBackup="true"
@@ -25,5 +37,36 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- v1.1：无障碍开屏自动跳过服务 -->
+        <service
+            android:name=".AdSkipAccessibilityService"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:label="@string/acc_service_label">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <!-- P1：前台保活服务（specialUse） -->
+        <service
+            android:name=".AdSkipKeepAliveService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse" />
+
+        <!-- P1：开机 / 应用更新自启 -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
     </application>
 </manifest>

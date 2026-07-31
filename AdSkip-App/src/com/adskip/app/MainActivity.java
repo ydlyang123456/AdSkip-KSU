@@ -55,6 +55,15 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        // 从系统无障碍设置返回后，即时刷新「开屏跳过」页权限状态（页面已加载时生效）
+        if (webView != null) {
+            webView.evaluateJavascript("if(window.refreshSkip)window.refreshSkip();", null);
+        }
+    }
+
+    @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_BACK && webView != null && webView.canGoBack()) {
             webView.goBack();

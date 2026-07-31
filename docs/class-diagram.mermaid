@@ -1,0 +1,57 @@
+classDiagram
+    class AdSkipBridge {
+        +String hasRoot()
+        +String getStatus()
+        +String runAction(cmd)
+        +String setConfig(key, value)
+        +String getConfig(key)
+        +String isAccessibilityEnabled()
+        +String openAccessibilitySettings()
+        +String getSkipConfig()
+        +String setSkipEnable(bool)
+        +String setEnabledApps(json)
+        +String setSkipKeywords(json)
+        +String setExcludeKeywords(json)
+        +String getSkipStats()
+        +String getLog(lines)
+        -RootResult runAsRoot(cmd)
+    }
+    class AdSkipAccessibilityService {
+        +void onServiceConnected()
+        +void onAccessibilityEvent(event)
+        -AccessibilityNodeInfo findSkipNode(root)
+        -boolean isExcluded(root)
+        -void performSkipClick(node)
+        -void incTodayCount()
+    }
+    class AdSkipPrefs {
+        +boolean getBool(key, def)
+        +void putBool(key, v)
+        +Set~String~ getStringSet(key, def)
+        +void putStringSet(key, set)
+        +int getInt(key, def)
+        +int getTodayCount()
+        +void incTodayCount()
+        +String getConfigFromShell(key)
+    }
+    class AdSkipRegex {
+        +Pattern SKIP_PATTERN
+        +Pattern EXCLUDE_PATTERN
+        +boolean matchesSkip(text)
+        +boolean containsExclude(text)
+    }
+    class MainActivity {
+        +void onCreate()
+        +void onResume()
+    }
+    class AdSkipKeepAliveService {
+        +int onStartCommand()
+    }
+
+    AdSkipBridge --> AdSkipPrefs : 读写无障碍配置(本地)
+    AdSkipBridge ..> AdSkipPrefs : 模块开关走 su/config.sh
+    AdSkipAccessibilityService --> AdSkipPrefs : 读配置/计数
+    AdSkipAccessibilityService --> AdSkipRegex : 匹配
+    MainActivity --> AdSkipBridge : addJavascriptInterface
+    MainActivity --> AdSkipPrefs : onResume 刷新
+    AdSkipAccessibilityService ..> AdSkipKeepAliveService : API31+ 绑定保活

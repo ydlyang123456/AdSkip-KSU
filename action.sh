@@ -27,8 +27,22 @@ case "$_cmd" in
         # 仅用现有清单重新生成 hosts（不下载）
         generate_hosts
         _t=$(grep -cvE '^[[:space:]]*#' "$MODDIR/system/etc/hosts" 2>/dev/null)
-        log_msg "info" "rebuild done; hosts regenerated: ${_t:-0} 条"
-        echo "已用现有清单重新生成 hosts（${_t:-0} 条）。"
+        if [ "$SKIP_ADSDK" = "1" ]; then
+            log_msg "info" "rebuild done; hosts regenerated: ${_t:-0} 条（含广告 SDK 域，SKIP_ADSDK=1）"
+            echo "已用现有清单重新生成 hosts（${_t:-0} 条）。SKIP_ADSDK=1：已合并广告 SDK 域名增强清单。"
+        else
+            log_msg "info" "rebuild done; hosts regenerated: ${_t:-0} 条（SKIP_ADSDK=0：未合并广告 SDK 域）"
+            echo "已用现有清单重新生成 hosts（${_t:-0} 条）。SKIP_ADSDK=0：未写入任何广告 SDK 域（默认关闭，绝不误伤）。"
+        fi
+        ;;
+    adsdk)
+        # v1.1：广告 SDK 域名增强状态查询
+        if [ "$SKIP_ADSDK" = "1" ]; then
+            echo "SKIP_ADSDK=1 · 广告 SDK 域名增强【已开启】：rebuild 后会把 common/blocklist_adsdk.txt 合并进 hosts。"
+        else
+            echo "SKIP_ADSDK=0 · 广告 SDK 域名增强【默认关闭】：不向 hosts 写入任何广告 SDK 域（绝不误伤播放域）。"
+        fi
+        [ -n "$ADSDK_ONLINE_URL" ] && echo "ADSDK_ONLINE_URL=$ADSDK_ONLINE_URL（P1 在线子清单已配置）" || echo "ADSDK_ONLINE_URL=（未配置在线子清单）"
         ;;
     enable)
         # 移除 disable 标记以启用模块
@@ -50,11 +64,12 @@ case "$_cmd" in
         fi
         ;;
     *)
-        echo "Usage: $0 [update|enable|disable|status|rebuild]"
+        echo "Usage: $0 [update|enable|disable|status|rebuild|adsdk]"
         echo "  update   下载最新清单并重新生成 hosts"
         echo "  rebuild  用现有清单重新生成 hosts（不下载）"
         echo "  enable   启用模块（移除 disable 标记）"
         echo "  disable  禁用模块（创建 disable 标记）"
         echo "  status   显示当前状态（默认）"
+        echo "  adsdk    显示广告 SDK 域名增强状态（SKIP_ADSDK）"
         ;;
 esac

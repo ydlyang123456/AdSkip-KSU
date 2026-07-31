@@ -21,6 +21,17 @@ else
     log_msg "info" "online update disabled in config.sh"
 fi
 
+# P1：广告 SDK 在线子清单（仅当 SKIP_ADSDK=1 且配置了 ADSDK_ONLINE_URL 时）。
+# best-effort：拉取成功后就地重生成 hosts（保持 inode），未配置/失败则静默跳过，绝不报错。
+if [ "$SKIP_ADSDK" = "1" ] && [ -n "$ADSDK_ONLINE_URL" ]; then
+    if fetch_adsdk_online; then
+        generate_hosts
+        log_msg "info" "adsdk online list merged into hosts"
+    else
+        log_msg "warn" "adsdk online fetch skipped"
+    fi
+fi
+
 # 关闭系统级私有 DNS（DoH），配合 hosts 屏蔽；best-effort（settings 不可用时仅记日志跳过）。
 apply_private_dns
 

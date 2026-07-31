@@ -182,10 +182,37 @@ public class AdSkipBridge {
     @JavascriptInterface
     public String getStatus() {
         RootResult r = runAsRoot("sh " + ACTION_SH + " status --json");
-        if (r.exitCode == 0 && r.output != null && !r.output.trim().isEmpty()) {
-            return r.output;
+        String base = (r.exitCode == 0 && r.output != null && !r.output.trim().isEmpty())
+                ? r.output : "{}";
+        // 始终附带 App 自身版本号（动态读取 PackageInfo.versionName），避免界面版本号不随更新刷新
+        try {
+            String ver = getAppVersion();
+            // 仅当模块 JSON 未含 version 字段时注入，互不覆盖
+            if (ver != null && !ver.isEmpty() && !base.contains("\"version\"")) {
+                base = base.replaceFirst("(\\}\\s*)$", ",\"version\":\"" + ver + "\"$1");
+            }
+        } catch (Exception ignored) {
         }
-        return "{\"error\":true}";
+        return base;
+    }
+
+    /**
+     * 返回本 App 的 versionName（如 1.2.1），供界面显示真实版本。
+     */
+    @JavascriptInterface
+    public String getVersion() {
+        String v = getAppVersion();
+        return v != null ? v : "";
+    }
+
+    private String getAppVersion() {
+        try {
+            android.content.pm.PackageManager pm = activity.getPackageManager();
+            android.content.pm.PackageInfo pi = pm.getPackageInfo(activity.getPackageName(), 0);
+            return pi.versionName;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /**

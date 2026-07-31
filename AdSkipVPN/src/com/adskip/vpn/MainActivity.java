@@ -160,20 +160,27 @@ public final class MainActivity extends Activity {
 
     /** 检测是否有其他 VPN 正在运行（单槽位硬限制）。 */
     private boolean isAnotherVpnActive() {
-        ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
-        if (cm == null) {
+        try {
+            ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+            if (cm == null) {
+                return false;
+            }
+            Network net = cm.getActiveNetwork();
+            if (net == null) {
+                return false;
+            }
+            NetworkCapabilities cap = cm.getNetworkCapabilities(net);
+            if (cap == null) {
+                return false;
+            }
+            // 活跃网络若不是「非 VPN」网络，则说明有 VPN 正在运行
+            return !cap.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN);
+        } catch (SecurityException e) {
+            // 缺少 ACCESS_NETWORK_STATE 时不崩溃，仅跳过冲突检测
+            return false;
+        } catch (Exception e) {
             return false;
         }
-        Network net = cm.getActiveNetwork();
-        if (net == null) {
-            return false;
-        }
-        NetworkCapabilities cap = cm.getNetworkCapabilities(net);
-        if (cap == null) {
-            return false;
-        }
-        // 活跃网络若不是「非 VPN」网络，则说明有 VPN 正在运行
-        return !cap.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN);
     }
 
     // ---------- 按 App 列表 ----------

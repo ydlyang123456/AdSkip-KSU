@@ -10,6 +10,8 @@
 
     <!-- fake-VPN 需建 tun 与上游 UDP 通信；与无 INTERNET 的 manager App 完全分离 -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 检测其他 VPN 是否活跃（isAnotherVpnActive 用 ConnectivityManager.getActiveNetwork），Android 15 强制要求此权限，缺失会 SecurityException 致启动即崩 -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Android 8+ foreground service 必需 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <!-- API>=31：specialUse 前台服务类型所需权限 -->

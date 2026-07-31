@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>AdSkip · Root 跳广告管理</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-canvas:#0A0D12;
+    --bg-phone:#0F1217;
+    --accent:#00E676;
+    --text:#FFFFFF;
+    --text-2:#A6ADB8;
+    --text-3:#7C8590;
+    --card:rgba(255,255,255,0.05);
+    --card-2:rgba(255,255,255,0.06);
+    --border:rgba(255,255,255,0.10);
+    --border-2:rgba(255,255,255,0.12);
+    --toggle-off:rgba(255,255,255,0.18);
+    --amber:#FFB020;
+    --radius-pill:36px;
+    --radius-tab:26px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    background:
+      radial-gradient(900px 520px at 50% -8%, rgba(0,230,118,0.10), transparent 60%),
+      var(--bg-canvas);
+    color:var(--text);
+    overflow:hidden;
+  }
+  .stage{ width:100vw; height:100vh; }
+  /* ===== Phone shell (full-screen) ===== */
+  .phone{
+    width:100%; height:100%;
+    background:var(--bg-phone);
+    display:flex; flex-direction:column;
+    position:relative; overflow:hidden;
+  }
+  /* ===== Root banner ===== */
+  .root-banner{
+    display:none;
+    background:rgba(255,77,79,0.14);
+    border-bottom:1px solid rgba(255,77,79,0.4);
+    color:#FF9A9C;
+    font-size:13px; font-weight:600; line-height:1.5;
+    padding:12px 18px;
+    text-align:center;
+  }
+  /* ===== Status bar ===== */
+  .status-bar{
+    height:54px; flex:0 0 54px;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 24px;
+  }
+  .status-bar .time{font-size:16px;font-weight:600;letter-spacing:0.3px;}
+  .status-icons{display:flex;align-items:center;gap:7px;color:#fff;}
+  .status-icons svg{display:block;}
+  .battery{color:var(--accent);}
+  /* ===== Scroll body ===== */
+  .screen-body{
+    flex:1 1 auto; min-height:0;
+    overflow-y:auto; overflow-x:hidden;
+    scrollbar-width:none;
+  }
+  .screen-body::-webkit-scrollbar{display:none;}
+  .page{display:none;flex-direction:column;padding:18px;height:100%;}
+  .page.active{display:flex;}
+  .page.home,.page.apps,.page.modules,.page.logs{gap:16px;}
+
+  .glass{
+    background:var(--card-2);
+    border:1px solid var(--border);
+    backdrop-filter:blur(24px);
+    -webkit-backdrop-filter:blur(24px);
+    border-radius:20px;
+  }
+
+  .sec-head{display:flex;align-items:center;justify-content:space-between;}
+  .sec-head h1{font-size:22px;font-weight:700;letter-spacing:-0.2px;}
+  .sec-head .filter{
+    width:38px;height:38px;border-radius:12px;
+    background:var(--card);border:1px solid var(--border);
+    display:flex;align-items:center;justify-content:center;color:var(--text-2);
+  }
+  .sec-title{font-size:14px;font-weight:600;color:var(--text-2);letter-spacing:0.2px;}
+  .badge{
+    font-size:12px;font-weight:600;color:var(--accent);
+    background:rgba(0,230,118,0.10);border:1px solid rgba(0,230,118,0.25);
+    padding:5px 10px;border-radius:999px;
+  }
+
+  /* ===== greeting ===== */
+  .greet{display:flex;align-items:center;justify-content:space-between;}
+  .greet .hi{font-size:20px;font-weight:600;}
+  .greet .sub{font-size:13px;color:var(--text-3);margin-top:2px;}
+  .avatar{
+    width:44px;height:44px;border-radius:50%;
+    background:linear-gradient(135deg,#00E676,#00B25C);
+    display:flex;align-items:center;justify-content:center;
+    font-size:18px;font-weight:700;color:#04140B;
+    box-shadow:0 6px 16px rgba(0,230,118,0.30);
+  }
+  /* ===== hero ===== */
+  .hero{padding:18px;border-radius:24px;display:flex;flex-direction:column;gap:16px;}
+  .pill-root{
+    align-self:flex-start;font-size:12px;font-weight:600;color:var(--accent);
+    background:rgba(0,230,118,0.12);border:1px solid rgba(0,230,118,0.30);
+    padding:6px 12px;border-radius:999px;display:flex;align-items:center;gap:6px;
+  }
+  .pill-root.off{color:var(--amber);background:rgba(255,176,32,0.12);border-color:rgba(255,176,32,0.30);}
+  .pill-root .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);}
+  .pill-root.off .dot{background:var(--amber);box-shadow:0 0 8px var(--amber);}
+  .hero-main{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
+  .hero-main h2{font-size:24px;font-weight:700;letter-spacing:-0.3px;}
+  .hero-main p{font-size:13px;color:var(--text-2);margin-top:6px;line-height:1.45;}
+  .hero-foot{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-3);}
+  .hero-foot .mode{
+    color:var(--text);background:rgba(255,255,255,0.06);
+    border:1px solid var(--border);padding:5px 10px;border-radius:999px;font-weight:500;
+  }
+
+  /* toggle */
+  .toggle{
+    width:52px;height:30px;border-radius:999px;background:var(--toggle-off);
+    position:relative;flex:0 0 auto;cursor:pointer;transition:background .25s;
+  }
+  .toggle::after{
+    content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;
+    background:#fff;transition:transform .25s;box-shadow:0 2px 6px rgba(0,0,0,0.4);
+  }
+  .toggle.on{background:var(--accent);}
+  .toggle.on::after{transform:translateX(22px);}
+
+  .stats{display:flex;gap:12px;}
+  .stat{flex:1;padding:16px;border-radius:18px;display:flex;flex-direction:column;gap:6px;}
+  .stat .k{font-size:12px;color:var(--text-3);}
+  .stat .v{font-size:22px;font-weight:700;letter-spacing:-0.3px;}
+  .stat .v.green{color:var(--accent);}
+  .stat .d{font-size:11px;color:var(--text-3);}
+
+  /* info grid */
+  .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .info-cell{padding:13px 14px;border-radius:16px;display:flex;flex-direction:column;gap:5px;}
+  .info-cell .ik{font-size:12px;color:var(--text-3);}
+  .info-cell .iv{font-size:15px;font-weight:600;}
+
+  /* ===== Apps screen ===== */
+  .note-card{padding:16px;border-radius:18px;display:flex;flex-direction:column;gap:8px;}
+  .note-card .nt{font-size:14px;font-weight:600;color:var(--accent);}
+  .note-card .nd{font-size:12.5px;color:var(--text-2);line-height:1.55;}
+  .count-big{padding:20px;border-radius:20px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;}
+  .count-big .cv{font-size:40px;font-weight:700;color:var(--accent);letter-spacing:-1px;}
+  .count-big .ck{font-size:13px;color:var(--text-2);}
+  .btn{
+    width:100%;padding:15px;border-radius:16px;border:1px solid rgba(0,230,118,0.4);
+    background:rgba(0,230,118,0.12);color:var(--accent);
+    font-size:15px;font-weight:600;cursor:pointer;transition:background .2s;
+    font-family:inherit;
+  }
+  .btn:active{background:rgba(0,230,118,0.22);}
+  .btn:disabled{opacity:.55;cursor:default;}
+
+  /* ===== Modules screen ===== */
+  .summary{padding:18px;border-radius:20px;display:flex;flex-direction:column;gap:6px;}
+  .summary .st{font-size:16px;font-weight:700;}
+  .summary .sd{font-size:13px;color:var(--text-2);}
+  .mod-card{padding:14px;border-radius:18px;display:flex;align-items:center;gap:13px;}
+  .mod-ico{width:48px;height:48px;border-radius:14px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:18px;}
+  .mod-body{flex:1;min-width:0;}
+  .mod-body .top{display:flex;align-items:center;gap:8px;}
+  .mod-body .n{font-size:15px;font-weight:600;}
+  .mod-body .ver{font-size:11px;color:var(--accent);font-weight:600;}
+  .mod-body .s{font-size:12px;color:var(--text-3);margin-top:3px;}
+  .row-card{padding:14px 16px;border-radius:18px;display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .row-card .rl{display:flex;flex-direction:column;gap:3px;}
+  .row-card .rl .rt{font-size:14px;font-weight:600;}
+  .row-card .rl .rs{font-size:12px;color:var(--text-3);}
+
+  /* ===== Logs screen ===== */
+  .log-summary{padding:18px;border-radius:20px;display:flex;flex-direction:column;gap:14px;}
+  .log-top{display:flex;justify-content:space-between;align-items:flex-end;}
+  .log-top .blk .k{font-size:12px;color:var(--text-3);}
+  .log-top .blk .v{font-size:26px;font-weight:700;letter-spacing:-0.4px;}
+  .log-top .blk .v.green{color:var(--accent);}
+  .log-top .blk .sub{font-size:11px;color:var(--text-3);margin-top:2px;}
+  .log-text{
+    padding:14px;border-radius:16px;background:rgba(0,0,0,0.35);
+    border:1px solid var(--border);
+    font-family:"Inter",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:12px;line-height:1.6;color:var(--text-2);
+    white-space:pre-wrap;word-break:break-all;
+    max-height:46vh;overflow-y:auto;scrollbar-width:none;
+  }
+  .log-text::-webkit-scrollbar{display:none;}
+
+  /* ===== Tab bar ===== */
+  .tabbar{ height:90px; flex:0 0 90px; padding:10px 21px 20px; display:flex; align-items:center; }
+  .tab-pill{
+    width:100%;height:60px;
+    background:rgba(255,255,255,0.06);
+    border:1px solid var(--border-2);
+    border-radius:var(--radius-pill);
+    display:flex;padding:4px;
+  }
+  .tab{
+    flex:1;height:100%;border-radius:var(--radius-tab);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+    color:var(--text-3);cursor:pointer;transition:background .2s,color .2s;
+    user-select:none;
+  }
+  .tab svg{width:18px;height:18px;}
+  .tab .tab-label{font-size:10px;font-weight:600;letter-spacing:0.2px;}
+  .tab.active{background:var(--accent);color:#fff;}
+  .tab.active svg{color:#fff;}
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="phone" id="phone">
+
+    <!-- Root banner -->
+    <div class="root-banner" id="rootBanner"></div>
+
+    <!-- Status bar -->
+    <div class="status-bar">
+      <span class="time" id="clock">--:--</span>
+      <div class="status-icons">
+        <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5" width="3" height="7" rx="1"/><rect x="10" y="2.5" width="3" height="9.5" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+        <svg width="17" height="12" viewBox="0 0 17 12" fill="currentColor"><path d="M8.5 1C5.4 1 2.6 2.2.5 4.2L1.9 5.6C3.5 4 5.9 3.1 8.5 3.1s5 .9 6.6 2.5l1.4-1.4C14.4 2.2 11.6 1 8.5 1Zm0 3.6C6.4 4.6 4.5 5.4 3.2 6.8L4.6 8.2C5.6 7.2 7 6.6 8.5 6.6s2.9.6 3.9 1.6l1.4-1.4C12.5 5.4 10.6 4.6 8.5 4.6Zm0 3.5c-.9 0-1.7.4-2.3 1L8.5 12l2.3-2.9c-.6-.6-1.4-1-2.3-1Z"/></svg>
+        <svg class="battery" width="27" height="13" viewBox="0 0 27 13" fill="none"><rect x="0.6" y="0.6" width="22" height="11.8" rx="3" stroke="currentColor" stroke-width="1.2"/><rect x="2.4" y="2.4" width="16" height="8.2" rx="1.6" fill="currentColor"/><rect x="24" y="4" width="2" height="5" rx="1" fill="currentColor"/></svg>
+      </div>
+    </div>
+
+    <!-- Scrollable body -->
+    <div class="screen-body">
+
+      <!-- ============ PAGE: HOME ============ -->
+      <section class="page home active" data-page="home">
+        <div class="greet">
+          <div>
+            <div class="hi">AdSkip 管理器</div>
+            <div class="sub">系统级 hosts 广告屏蔽</div>
+          </div>
+          <div class="avatar">A</div>
+        </div>
+
+        <div class="hero glass">
+          <span class="pill-root" id="pillRoot"><span class="dot"></span>检测中…</span>
+          <div class="hero-main">
+            <div>
+              <h2>全局跳广告</h2>
+              <p id="heroDesc">模块开关 · 一键启用 / 停用</p>
+            </div>
+            <div class="toggle on" id="globalToggle" data-action="module-enable"></div>
+          </div>
+          <div class="hero-foot">
+            <span class="mode" id="heroMode">拦截模式 · hosts</span>
+          </div>
+        </div>
+
+        <div class="stats">
+          <div class="stat glass">
+            <span class="k">屏蔽域名</span>
+            <span class="v green" id="statCount">—</span>
+            <span class="d">内置 + 在线清单</span>
+          </div>
+          <div class="stat glass">
+            <span class="k">最后更新</span>
+            <span class="v" id="statUpdate" style="font-size:15px;">—</span>
+            <span class="d">在线 / 内置清单</span>
+          </div>
+        </div>
+
+        <div class="info-grid">
+          <div class="info-cell glass"><span class="ik">Root 管理器</span><span class="iv" id="infoManager">—</span></div>
+          <div class="info-cell glass"><span class="ik">模块版本</span><span class="iv" id="infoVersion">—</span></div>
+          <div class="info-cell glass"><span class="ik">在线更新</span><span class="iv" id="infoOnline">—</span></div>
+          <div class="info-cell glass"><span class="ik">私有 DNS</span><span class="iv" id="infoDns">—</span></div>
+        </div>
+      </section>
+
+      <!-- ============ PAGE: APPS ============ -->
+      <section class="page apps" data-page="apps">
+        <div class="sec-head">
+          <h1>应用管理</h1>
+          <div class="filter">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 5h14M4 9h10M7 13h4" stroke-linecap="round"/></svg>
+          </div>
+        </div>
+
+        <div class="note-card glass">
+          <div class="nt">全局 hosts 方案</div>
+          <div class="sd">本模块基于系统级 <b>hosts</b> 屏蔽，对所有应用统一生效，不按单个 App 配置规则。开启后无需逐应用开关，广告 / 追踪 / 恶意域名会在系统解析时被指向黑洞地址。</div>
+        </div>
+
+        <div class="count-big glass">
+          <span class="cv" id="appCount">—</span>
+          <span class="ck">当前屏蔽域名总数（内置 + 在线清单）</span>
+        </div>
+
+        <button class="btn" id="updateBtn"><span id="updateLabel">立即更新规则</span></button>
+      </section>
+
+      <!-- ============ PAGE: MODULES ============ -->
+      <section class="page modules" data-page="modules">
+        <div class="sec-head">
+          <h1>模块管理</h1>
+          <span class="badge" id="modBadge">AdSkip</span>
+        </div>
+
+        <div class="summary glass">
+          <div class="st" id="modSummary">跳广告链路</div>
+          <div class="sd" id="modSummaryDesc">AdSkip-KSU 核心模块</div>
+        </div>
+
+        <div class="mod-card glass">
+          <div class="mod-ico" style="background:linear-gradient(135deg,#00E676,#00B25C);">A</div>
+          <div class="mod-body">
+            <div class="top"><span class="n">AdSkip</span><span class="ver" id="modVer">v1.0.0</span></div>
+            <div class="s">全局跳广告核心模块</div>
+            <div class="by" style="font-size:11px;color:var(--text-3);margin-top:2px;">by 寇豆码 (Kou)</div>
+          </div>
+          <div class="toggle on" id="modEnableToggle" data-action="module-enable"></div>
+        </div>
+
+        <div class="row-card glass">
+          <div class="rl">
+            <div class="rt">关闭系统私有 DNS</div>
+            <div class="rs">让系统解析走 hosts，屏蔽更彻底（best-effort）</div>
+          </div>
+          <div class="toggle" id="privateDnsToggle" data-action="config:DISABLE_PRIVATE_DNS"></div>
+        </div>
+
+        <div class="row-card glass">
+          <div class="rl">
+            <div class="rt">在线更新</div>
+            <div class="rs">开机 / 手动拉取最新清单（失败保留离线兜底）</div>
+          </div>
+          <div class="toggle" id="onlineUpdateToggle" data-action="config:ONLINE_UPDATE"></div>
+        </div>
+      </section>
+
+      <!-- ============ PAGE: LOGS ============ -->
+      <section class="page logs" data-page="logs">
+        <div class="sec-head">
+          <h1>拦截日志</h1>
+          <div class="filter">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 5h14M4 9h10M7 13h4" stroke-linecap="round"/></svg>
+          </div>
+        </div>
+
+        <div class="log-summary glass">
+          <div class="log-top">
+            <div class="blk"><div class="k">屏蔽域名</div><div class="v green" id="logCount">—</div><div class="sub">当前清单总数</div></div>
+            <div class="blk" style="text-align:right;"><div class="k">模块版本</div><div class="v" id="logVersion" style="font-size:18px;">—</div><div class="sub">AdSkip-KSU</div></div>
+          </div>
+        </div>
+
+        <div class="log-text" id="logText">（加载中…）</div>
+      </section>
+
+    </div>
+
+    <!-- ===== Tab bar ===== -->
+    <nav class="tabbar">
+      <div class="tab-pill">
+        <div class="tab active" data-tab="home">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 11l8-7 8 7" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 10v9h12v-9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="tab-label">首页</span>
+        </div>
+        <div class="tab" data-tab="apps">
+          <svg viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/></svg>
+          <span class="tab-label">应用</span>
+        </div>
+        <div class="tab" data-tab="modules">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3Z" stroke-linejoin="round"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5" stroke-linejoin="round"/></svg>
+          <span class="tab-label">模块</span>
+        </div>
+        <div class="tab" data-tab="logs">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 6h14M5 12h14M5 18h9" stroke-linecap="round"/></svg>
+          <span class="tab-label">日志</span>
+        </div>
+      </div>
+    </nav>
+
+  </div>
+</div>
+
+<script>
+  "use strict";
+
+  var hasRootOk = false;
+  var statusData = null;
+  var currentTab = "home";
+
+  function $(id){ return document.getElementById(id); }
+
+  // ---- 实时时钟 ----
+  function clock(){
+    var d = new Date();
+    var hh = String(d.getHours()).padStart(2, "0");
+    var mm = String(d.getMinutes()).padStart(2, "0");
+    var clk = $("clock");
+    if (clk) clk.textContent = hh + ":" + mm;
+  }
+  setInterval(clock, 1000); clock();
+
+  // ---- banner ----
+  function showBanner(text){
+    var b = $("rootBanner");
+    b.textContent = text;
+    b.style.display = "block";
+  }
+  function hideBanner(){ $("rootBanner").style.display = "none"; }
+
+  function setControlsEnabled(on){
+    var els = document.querySelectorAll("[data-action]");
+    for (var i = 0; i < els.length; i++){
+      els[i].style.opacity = on ? "1" : "0.4";
+      els[i].style.pointerEvents = on ? "auto" : "none";
+    }
+    var ub = $("updateBtn");
+    if (ub){ ub.style.pointerEvents = on ? "auto" : "none"; }
+  }
+
+  function asBool(v){ return v === true || v === "true"; }
+
+  function setToggle(id, on){
+    var el = $(id);
+    if (el){ if (on) el.classList.add("on"); else el.classList.remove("on"); }
+  }
+
+  // ---- 渲染状态 ----
+  function render(s){
+    // hero
+    var pill = $("pillRoot");
+    var enabled = asBool(s.enabled);
+    pill.innerHTML = '<span class="dot"></span>' + (enabled ? "已激活 · " : "已停用 · ") + (s.manager || "unknown");
+    pill.classList.toggle("off", !enabled);
+    setToggle("globalToggle", enabled);
+    setToggle("modEnableToggle", enabled);
+    $("heroDesc").textContent = enabled ? "模块已启用 · 广告自动跳过" : "模块已停用 · 启用后生效";
+
+    // stats
+    $("statCount").textContent = (s.listCount != null ? s.listCount : 0) + " 个";
+    $("statUpdate").textContent = s.lastUpdate && s.lastUpdate !== "never" ? s.lastUpdate : "从未更新";
+
+    // info grid
+    $("infoManager").textContent = s.manager || "-";
+    $("infoVersion").textContent = s.version || "-";
+    $("infoOnline").textContent = asBool(s.onlineUpdate) ? "开" : "关";
+    $("infoDns").textContent = asBool(s.disablePrivateDns) ? "已关闭" : "未关闭";
+
+    // apps
+    $("appCount").textContent = (s.listCount != null ? s.listCount : 0);
+
+    // modules
+    var mbadge = $("modBadge");
+    mbadge.textContent = enabled ? "已启用" : "已停用";
+    $("modSummary").textContent = enabled ? "跳广告链路已激活" : "模块已停用";
+    $("modSummaryDesc").textContent = enabled ? "AdSkip-KSU 核心模块运行中" : "启用后重启以完全生效";
+    $("modVer").textContent = s.version || "v1.0.0";
+    setToggle("privateDnsToggle", asBool(s.disablePrivateDns));
+    setToggle("onlineUpdateToggle", asBool(s.onlineUpdate));
+
+    // logs top
+    $("logCount").textContent = (s.listCount != null ? s.listCount : 0);
+    $("logVersion").textContent = s.version || "-";
+  }
+
+  function renderEmpty(){
+    var dash = "—";
+    $("statCount").textContent = dash;
+    $("statUpdate").textContent = dash;
+    $("infoManager").textContent = dash;
+    $("infoVersion").textContent = dash;
+    $("infoOnline").textContent = dash;
+    $("infoDns").textContent = dash;
+    $("appCount").textContent = dash;
+    $("logCount").textContent = dash;
+    $("logVersion").textContent = dash;
+    $("logText").textContent = "（无日志）";
+    setToggle("globalToggle", false);
+    setToggle("modEnableToggle", false);
+    setToggle("privateDnsToggle", false);
+    setToggle("onlineUpdateToggle", false);
+  }
+
+  // ---- 读取日志 ----
+  function loadLog(){
+    var raw = "";
+    try { raw = AdSkipBridge.getLog(50); } catch(e){ raw = ""; }
+    var el = $("logText");
+    if (raw && raw.trim().length > 0){
+      el.textContent = raw;
+    } else {
+      el.textContent = "（暂无日志，执行更新 / 启用等动作后会产生记录）";
+    }
+  }
+
+  // ---- 刷新状态 ----
+  function refresh(){
+    var raw;
+    try { raw = AdSkipBridge.getStatus(); } catch(e){ raw = '{"error":true}'; }
+    var s;
+    try { s = JSON.parse(raw); } catch(e){ s = { error: true }; }
+    if (s && s.error){
+      showBanner("未检测到 AdSkip-KSU 模块：请先刷入模块，再用本 App 管理（本 App 需要 Root 权限）");
+      setControlsEnabled(false);
+      renderEmpty();
+      return;
+    }
+    hideBanner();
+    setControlsEnabled(true);
+    statusData = s;
+    render(s);
+    if (currentTab === "logs") loadLog();
+  }
+
+  // ---- tab 切换 ----
+  function bindTabs(){
+    var tabs = document.querySelectorAll(".tab");
+    var pages = document.querySelectorAll(".page");
+    for (var i = 0; i < tabs.length; i++){
+      tabs[i].addEventListener("click", function(){
+        var name = this.dataset.tab;
+        currentTab = name;
+        for (var j = 0; j < tabs.length; j++) tabs[j].classList.toggle("active", tabs[j] === this);
+        for (var k = 0; k < pages.length; k++) pages[k].classList.toggle("active", pages[k].dataset.page === name);
+        document.querySelector(".screen-body").scrollTop = 0;
+        if (name === "home" || name === "modules") refresh();
+        else if (name === "logs") loadLog();
+      });
+    }
+  }
+
+  // ---- toggle 交互 ----
+  function bindToggles(){
+    var els = document.querySelectorAll("[data-action]");
+    for (var i = 0; i < els.length; i++){
+      els[i].addEventListener("click", function(){
+        if (!hasRootOk){ showBanner("本应用需要 Root 权限（KernelSU / Magisk / APatch）才能管理模块"); return; }
+        var el = this;
+        var action = el.dataset.action;
+        var nowOn = !el.classList.contains("on");
+        el.classList.toggle("on", nowOn);
+        if (action === "module-enable"){
+          AdSkipBridge.runAction(nowOn ? "enable" : "disable");
+        } else if (action.indexOf("config:") === 0){
+          var key = action.split(":")[1];
+          AdSkipBridge.setConfig(key, nowOn ? "true" : "false");
+        }
+        setTimeout(refresh, 350);
+      });
+    }
+  }
+
+  // ---- 更新按钮（长任务，先显示“更新中”再异步执行） ----
+  function bindUpdate(){
+    var ub = $("updateBtn");
+    ub.addEventListener("click", function(){
+      if (!hasRootOk){ showBanner("本应用需要 Root 权限（KernelSU / Magisk / APatch）才能管理模块"); return; }
+      var label = $("updateLabel");
+      label.textContent = "更新中…";
+      ub.disabled = true;
+      setTimeout(function(){
+        try { AdSkipBridge.runAction("update"); } catch(e){}
+        label.textContent = "立即更新规则";
+        ub.disabled = false;
+        refresh();
+        if (currentTab === "logs") loadLog();
+      }, 60);
+    });
+  }
+
+  // ---- 初始化 ----
+  function init(){
+    bindTabs();
+    bindToggles();
+    bindUpdate();
+    try {
+      hasRootOk = (typeof AdSkipBridge !== "undefined") && (AdSkipBridge.hasRoot() === "true");
+    } catch(e){ hasRootOk = false; }
+    if (!hasRootOk){
+      showBanner("本应用需要 Root 权限（KernelSU / Magisk / APatch）才能管理模块");
+      setControlsEnabled(false);
+      renderEmpty();
+      return;
+    }
+    hideBanner();
+    refresh();
+  }
+
+  if (document.readyState === "loading"){
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+</script>
+</body>
+</html>

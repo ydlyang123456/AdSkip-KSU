@@ -1,0 +1,18 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 绿色圆角方块（安全区 72dp 内） -->
+    <path
+        android:fillColor="#00E676"
+        android:pathData="M30,30 h48 a12,12 0 0 1 12,12 v24 a12,12 0 0 1 -12,12 h-48 a12,12 0 0 1 -12,-12 v-24 a12,12 0 0 1 12,-12 z" />
+    <!-- 盾形上的 "A" 标记（深色描边） -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#0A0D12"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M44,70 L54,42 L64,70 M48.5,59 L59.5,59" />
+</vector>

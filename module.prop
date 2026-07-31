@@ -1,0 +1,6 @@
+id=adskip_ksu
+name=AdSkip (Cross-Manager Ad Blocker)
+version=v1.0.0
+versionCode=100
+author=寇豆码 (Kou)
+description=Systemless hosts 广告/追踪/恶意域名屏蔽，兼容 KernelSU/Magisk/APatch，支持 Android 10-17 与澎湃OS 3，内置清单+在线更新。

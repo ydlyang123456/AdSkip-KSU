@@ -1,0 +1,3 @@
+127.0.0.1 localhost
+::1 localhost
+# AdSkip-KSU: 此文件会在开机由 post-fs-data.sh 重新生成为完整屏蔽列表

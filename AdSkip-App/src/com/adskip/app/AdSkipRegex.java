@@ -24,6 +24,24 @@ public final class AdSkipRegex {
     /** 安全兜底：永不子串匹配。 */
     private static final Pattern NEVER_MATCH_SUB = Pattern.compile("(?s)(?!x)x");
 
+    /**
+     * v1.2：滑动关闭提示词（子串匹配，不可用户编辑，故静态编译）。
+     * 仅当命中这些提示且 {@code ENABLE_SLIDE_CLOSE=true} 时，才以 dispatchGesture 手势关闭广告，
+     * 默认关以避免误触。
+     */
+    private static final Pattern SLIDE_HINT_PATTERN;
+    static {
+        String[] hints = {"上滑关闭", "滑动关闭", "上滑跳过广告", "滑动跳过广告", "上滑跳过", "滑动跳过"};
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < hints.length; i++) {
+            if (i > 0) {
+                sb.append("|");
+            }
+            sb.append("(?:").append(hints[i]).append(")");
+        }
+        SLIDE_HINT_PATTERN = Pattern.compile(sb.toString());
+    }
+
     private final Pattern skipPattern;
     private final Pattern excludePattern;
 
@@ -105,5 +123,13 @@ public final class AdSkipRegex {
             return false;
         }
         return excludePattern.matcher(text).find();
+    }
+
+    /** 文本是否含「滑动关闭」提示词（子串查找，用于滑动关闭手势触发判定）。 */
+    public boolean matchesSlideHint(String text) {
+        if (text == null || text.isEmpty()) {
+            return false;
+        }
+        return SLIDE_HINT_PATTERN.matcher(text).find();
     }
 }

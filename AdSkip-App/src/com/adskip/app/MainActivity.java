@@ -60,6 +60,8 @@ public class MainActivity extends Activity {
         // 从系统无障碍设置返回后，即时刷新「开屏跳过」页权限状态（页面已加载时生效）
         if (webView != null) {
             webView.evaluateJavascript("if(window.refreshSkip)window.refreshSkip();", null);
+            // v1.2：返回时刷新在线缓存态黄条（清除缓存 / 模块状态变化后即时更新）
+            webView.evaluateJavascript("if(window.refreshCacheWarn)window.refreshCacheWarn();", null);
         }
     }
 

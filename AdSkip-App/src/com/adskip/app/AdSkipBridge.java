@@ -3,6 +3,7 @@ package com.adskip.app;
 import android.annotation.SuppressLint;
 import android.content.ContentResolver;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.os.Build;
 import android.provider.Settings;
 import android.webkit.JavascriptInterface;
@@ -28,7 +29,7 @@ import java.util.concurrent.TimeUnit;
  *
  * <p><b>安全约束：</b>
  * <ul>
- *   <li>{@link #runAction(String)} 仅接受白名单命令 {update, rebuild, enable, disable}。</li>
+ *   <li>{@link #runAction(String)} 仅接受白名单命令 {update, rebuild, enable, disable, clearcache}。</li>
  *   <li>{@link #setConfig(String, String)} 仅接受白名单键，且值必须匹配 {@code ^[A-Za-z0-9._:-]+$}，
  *       杜绝 sed 注入。</li>
  *   <li>除白名单外不接受任意命令 / 任意路径。</li>
@@ -188,7 +189,7 @@ public class AdSkipBridge {
     }
 
     /**
-     * 执行模块动作（白名单：update / rebuild / enable / disable）。
+     * 执行模块动作（白名单：update / rebuild / enable / disable / clearcache）。
      *
      * @return 动作输出（JSON 或文本）；非法命令返回 {@code {"error":"bad_cmd"}}
      */
@@ -198,7 +199,7 @@ public class AdSkipBridge {
             return "{\"error\":\"bad_cmd\"}";
         }
         boolean allowed = "update".equals(cmd) || "rebuild".equals(cmd)
-                || "enable".equals(cmd) || "disable".equals(cmd);
+                || "enable".equals(cmd) || "disable".equals(cmd) || "clearcache".equals(cmd);
         if (!allowed) {
             return "{\"error\":\"bad_cmd\"}";
         }
@@ -300,6 +301,127 @@ public class AdSkipBridge {
     }
 
     // ============================================================
+    // v1.2：在线缓存管理（本地调用 action.sh clearcache / status，无 su 注入、无 INTERNET）
+    // ============================================================
+
+    /**
+     * 清除在线缓存（白名单命令 clearcache）：截断 downloaded_hosts.txt + 删 .dl_online + 删 .last_update + rebuild。
+     *
+     * @return {@code {"ok":true}} / {@code {"error":true}}
+     */
+    @JavascriptInterface
+    public String clearCache() {
+        RootResult r = runAsRoot("sh " + ACTION_SH + " clearcache");
+        return r.exitCode == 0 ? "{\"ok\":true}" : "{\"error\":true}";
+    }
+
+    /**
+     * 读取在线缓存态（来自 action.sh status --json 的 v1.2 新增字段）。
+     *
+     * @return JSON：{@code onlineCacheFresh}(对应 status 的 onlineCacheActive) /
+     *         {@code cachedLines}(对应 status 的 cacheLines) /
+     *         {@code staleCache}(对应 status 的 staleCache，缓存非空且非在线态)
+     */
+    @JavascriptInterface
+    public String getCacheState() {
+        try {
+            RootResult r = runAsRoot("sh " + ACTION_SH + " status --json");
+            JSONObject j = new JSONObject(r.output);
+            if (j.has("error")) {
+                return "{\"onlineCacheFresh\":false,\"cachedLines\":0,\"staleCache\":false}";
+            }
+            // 字段名与 common/lib.sh print_status_json 保持一致：
+            //   onlineCacheActive（在线更新开 + 在线态标记 + 缓存非空）↔ onlineCacheFresh
+            //   cacheLines（downloaded_hosts.txt 有效行数）↔ cachedLines
+            //   staleCache（缓存非空 且 非在线态）→ 陈旧缓存，提示清理
+            boolean fresh = j.optBoolean("onlineCacheActive", false);
+            int lines = j.optInt("cacheLines", 0);
+            boolean stale = j.optBoolean("staleCache", (lines > 0) && !fresh);
+            JSONObject o = new JSONObject();
+            o.put("onlineCacheFresh", fresh);
+            o.put("cachedLines", lines);
+            o.put("staleCache", stale);
+            return o.toString();
+        } catch (Exception e) {
+            return "{\"onlineCacheFresh\":false,\"cachedLines\":0,\"staleCache\":false}";
+        }
+    }
+
+    // ============================================================
+    // v1.2：AdSkip VPN 入口（deep-link，仅查询包/启动 Activity，无 INTERNET、不内嵌 VPN 逻辑）
+    // ============================================================
+
+    /** v1.2 VPN 应用包名（独立工程，与管理者 App 完全分离）。 */
+    public static final String VPN_PACKAGE = "com.adskip.vpn";
+
+    /**
+     * 查询 AdSkip VPN 是否已安装。
+     *
+     * @return {@code {"installed":true|false}}
+     */
+    @JavascriptInterface
+    public String getVpnInfo() {
+        try {
+            PackageManager pm = activity.getPackageManager();
+            boolean installed;
+            try {
+                pm.getPackageInfo(VPN_PACKAGE, 0);
+                installed = true;
+            } catch (Exception e) {
+                installed = false;
+            }
+            JSONObject o = new JSONObject();
+            o.put("installed", installed);
+            return o.toString();
+        } catch (Exception e) {
+            return "{\"installed\":false}";
+        }
+    }
+
+    /**
+     * deep-link 启动 AdSkip VPN（已安装则启动；未安装返回 installed:false）。
+     * 仅在 UI 线程发起 Activity，避免跨线程启动异常。
+     *
+     * @return {@code {"installed":true}} 已启动 / {@code {"installed":false}} 未安装 / {@code {"error":true}}
+     */
+    @JavascriptInterface
+    public String openVpnApp() {
+        if (activity == null) {
+            return "{\"error\":true}";
+        }
+        final boolean[] installed = {false};
+        try {
+            PackageManager pm = activity.getPackageManager();
+            try {
+                pm.getPackageInfo(VPN_PACKAGE, 0);
+                installed[0] = true;
+            } catch (Exception e) {
+                installed[0] = false;
+            }
+        } catch (Exception e) {
+            return "{\"error\":true}";
+        }
+        if (!installed[0]) {
+            return "{\"installed\":false}";
+        }
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Intent i = new Intent(Intent.ACTION_MAIN);
+                    i.addCategory(Intent.CATEGORY_LAUNCHER);
+                    i.setPackage(VPN_PACKAGE);
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    activity.startActivity(i);
+                } catch (Exception ignored) {
+                    // 启动失败（如被禁用）忽略，UI 已据 installed 提示
+                }
+            }
+        });
+        return "{\"installed\":true}";
+    }
+
+    // ============================================================
     // v1.1：无障碍开屏跳过（本地 SharedPreferences，免 root，无命令执行）
     // ============================================================
 
@@ -373,6 +495,7 @@ public class AdSkipBridge {
             o.put("wifiOnly", prefs.isWifiOnly());
             o.put("skipDelayMs", prefs.getSkipDelayMs());
             o.put("subwindowExclude", prefs.isSubwindowExclude());
+            o.put("slideClose", prefs.isSlideCloseEnabled());
             o.put("todayCount", prefs.getTodayCount());
             return o.toString();
         } catch (JSONException e) {
@@ -493,6 +616,21 @@ public class AdSkipBridge {
         }
         boolean on = "true".equals(v) || "1".equals(v);
         prefs.putBool(AdSkipPrefs.KEY_WIFI_ONLY, on);
+        return "{\"ok\":true}";
+    }
+
+    /**
+     * 写 ENABLE_SLIDE_CLOSE（v1.2 滑动关闭全屏广告，默认关）。
+     *
+     * @return {@code {"ok":true}}
+     */
+    @JavascriptInterface
+    public String setSlideClose(String v) {
+        if (v == null) {
+            return "{\"error\":\"bad_value\"}";
+        }
+        boolean on = "true".equals(v) || "1".equals(v);
+        prefs.putBool(AdSkipPrefs.KEY_ENABLE_SLIDE_CLOSE, on);
         return "{\"ok\":true}";
     }
 

@@ -1,0 +1,9 @@
+# 已知 DoH（DNS over HTTPS）端点域名（逐行，与 DohBlocklist.java 对应）。
+# 这些域名在 DNS 层直接返回 0.0.0.0，迫使 App 回退到受控明文 DNS（无需 TLS MITM）。
+dns.google
+dns.cloudflare.com
+dns.quad9.net
+dns.alidns.com
+doh.opendns.com
+doh.pub
+rubyfish.cn

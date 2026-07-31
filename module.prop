@@ -1,6 +1,6 @@
 id=adskip_ksu
 name=AdSkip (Cross-Manager Ad Blocker)
-version=v1.1.0
-versionCode=110
+version=v1.2.0
+versionCode=120
 author=寇豆码 (Kou)
-description=双管齐下：①systemless hosts 广告/追踪/恶意域名屏蔽（内置清单+在线更新）；②v1.1 新增广告 SDK 独立域名增强拦截（SKIP_ADSDK 默认关闭，绝不误伤播放域）。兼容 KernelSU/Magisk/APatch，Android 10-17 与澎湃OS 3。
+description=双管齐下：①systemless hosts 广告/追踪/恶意域名屏蔽（内置清单+在线更新）；②v1.1 新增广告 SDK 独立域名增强拦截（SKIP_ADSDK 默认关闭，绝不误伤播放域）。兼容 KernelSU/Magisk/APatch，Android 10-17 与澎湃OS 3。｜v1.2：默认关闭在线更新并修复离线缓存仍写入 hosts 的卡顿根因（双重门控+HOSTS护栏+clearcache）；扩充广告 SDK 域名；立项独立 VPN 应用。

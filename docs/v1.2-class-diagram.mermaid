@@ -1,0 +1,125 @@
+%% AdSkip-KSU v1.2 · 类图（VPN 应用 + 无障碍强化）
+%% 注：模块侧为 shell 脚本（无 OO），此处仅画 Java 侧（VPN App + manager App 增强）
+
+classDiagram
+    %% ============ VPN 应用 (com.adskip.vpn) ============
+    class AdSkipVpnApplication {
+        +onCreate()
+    }
+    class MainActivity {
+        +void onCreate()
+        +void onStartVpn()
+        +void onStopVpn()
+        +void refreshStats()
+        +void toggleAppAllow(pkg)
+    }
+    class AdSkipVpnService {
+        +int onStartCommand(intent, flags, startId)
+        -Builder buildVpnConfig(policy)
+        +void onRevoke()
+        -VpnTunnel tunnel
+        -Notification foregroundNotify
+    }
+    class VpnTunnel {
+        -FileInputStream in
+        -FileOutputStream out
+        +void runloop()
+        -byte[] readPacket()
+        -void writePacket(bytes)
+        -IpUdp parse(packet)
+    }
+    class DnsProxy {
+        +byte[] handle(DnsPacket q)
+        -boolean isBlocked(domain)
+        -byte[] forgeBlocked(DnsPacket q)
+        -byte[] forward(DnsPacket q)
+    }
+    class DnsPacket {
+        +int id
+        +String qname
+        +int qtype
+        +static DnsPacket parse(bytes)
+        +byte[] buildResponse(id, qname, ip)
+        +byte[] buildNxdomain(id, qname)
+    }
+    class DnsResolver {
+        -DatagramSocket sock
+        +byte[] query(DnsPacket q, upstream)
+        -void protect()
+    }
+    class Blocklist {
+        +Set~String~ blocked
+        +boolean matches(domain)
+        +void load(assets)
+        +void importFromModule(path)
+    }
+    class DohBlocklist {
+        +Set~String~ dohHosts
+        +boolean isDoh(domain)
+    }
+    class BlockStats {
+        +long totalBlocked
+        +Map~String,Long~ byDomain
+        +Map~Integer,Long~ byUid
+        +void record(domain, uid)
+        +Json dump()
+    }
+    class AppPolicy {
+        +Set~String~ allowedApps
+        +boolean isAllowed(pkg)
+        +void addAllow(pkg)
+        +void removeAllow(pkg)
+    }
+    class Prefs {
+        +boolean getBool(key, def)
+        +void putBool(key, v)
+        +int getInt(key, def)
+        +String getString(key, def)
+    }
+
+    AdSkipVpnApplication --> Prefs : 初始化
+    MainActivity --> AdSkipVpnService : start/stop (VpnService.prepare)
+    MainActivity --> BlockStats : 展示
+    MainActivity --> AppPolicy : 管理放行
+    AdSkipVpnService --> VpnTunnel : 启动循环
+    AdSkipVpnService --> AppPolicy : 读放行列表(addDisallowedApplication)
+    AdSkipVpnService --> Prefs : 读开关
+    VpnTunnel --> DnsProxy : 每包 handle
+    DnsProxy --> DnsPacket : 解析/构造
+    DnsProxy --> Blocklist : matches
+    DnsProxy --> DohBlocklist : isDoh
+    DnsProxy --> DnsResolver : 未命中转发
+    DnsProxy --> BlockStats : record
+    DnsResolver ..> AdSkipVpnService : protect() 排除自身
+    Blocklist --> DohBlocklist : 合并 DoH 端点
+    BlockStats --> Prefs : 持久化计数
+    AppPolicy --> Prefs : 持久化
+
+    %% ============ manager App 增强 (com.adskip.app) ============
+    class AdSkipBridge {
+        +String runAction(cmd)
+        +String getCacheState()
+        +String clearCache()
+    }
+    class AdSkipAccessibilityService {
+        +void onAccessibilityEvent(e)
+        -AccessibilityNodeInfo findSkipNode(root, r)
+        -AccessibilityNodeInfo findCloseNode(root, r)
+        -boolean scanExclude(root, r)
+        -void performSkipClick(node, ms)
+        -void performSlideClose()
+        -void dispatchGestureSlide()
+    }
+    class AdSkipPrefs {
+        +boolean isSlideCloseEnabled()
+        +Json getCacheState()
+    }
+    class AdSkipRegex {
+        +Pattern SKIP_PATTERN
+        +Pattern EXCLUDE_PATTERN
+    }
+
+    AdSkipBridge --> AdSkipPrefs : 读缓存态/清缓存
+    AdSkipAccessibilityService --> AdSkipPrefs : 配置/计数
+    AdSkipAccessibilityService --> AdSkipRegex : 匹配(倒计时/遮罩/排除)
+    AdSkipAccessibilityService ..> AdSkipAccessibilityService : findCloseNode + dispatchGestureSlide (ENABLE_SLIDE_CLOSE)

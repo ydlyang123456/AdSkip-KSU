@@ -1,7 +1,7 @@
 #!/system/bin/sh
 # AdSkip-KSU - action.sh
 # 用户手动触发 / 管理器 Action 按钮调用。
-# 用法: sh action.sh [update|enable|disable|status|rebuild]  （无参默认 status）
+# 用法: sh action.sh [update|enable|disable|status|rebuild|clearcache]  （无参默认 status）
 
 MODDIR=${0%/*}
 . "$MODDIR/config.sh"
@@ -11,16 +11,25 @@ _cmd="${1:-status}"
 
 case "$_cmd" in
     update)
-        # 下载最新清单 -> 就地重新生成 hosts -> 更新时间戳
-        if fetch_online; then
-            mark_updated
+        # v1.2：ONLINE_UPDATE=false（默认）时只 rebuild、不下载，避免写入 .dl_online 标记；
+        # 仅 ONLINE_UPDATE=true 才走下载逻辑（成功则标记 .dl_online 并重新生成 hosts）。
+        if [ "$ONLINE_UPDATE" = "true" ]; then
+            # 下载最新清单 -> 就地重新生成 hosts -> 更新时间戳
+            if fetch_online; then
+                mark_updated
+                generate_hosts
+                _t=$(grep -cvE '^[[:space:]]*#' "$MODDIR/system/etc/hosts" 2>/dev/null)
+                log_msg "info" "update done; hosts regenerated: ${_t:-0} 条"
+                echo "在线更新完成，已重新生成 hosts（${_t:-0} 条）。覆盖挂载绑定同一 inode，已即时生效；建议重启或清除 DNS 缓存以获得完整效果。"
+            else
+                log_msg "warn" "update failed; keeping existing lists"
+                echo "在线更新失败，已保留现有清单。详见 $LOG_FILE"
+            fi
+        else
             generate_hosts
             _t=$(grep -cvE '^[[:space:]]*#' "$MODDIR/system/etc/hosts" 2>/dev/null)
-            log_msg "info" "update done; hosts regenerated: ${_t:-0} 条"
-            echo "在线更新完成，已重新生成 hosts（${_t:-0} 条）。覆盖挂载绑定同一 inode，已即时生效；建议重启或清除 DNS 缓存以获得完整效果。"
-        else
-            log_msg "warn" "update failed; keeping existing lists"
-            echo "在线更新失败，已保留现有清单。详见 $LOG_FILE"
+            log_msg "info" "update done (online disabled); hosts regenerated: ${_t:-0} 条"
+            echo "在线更新已关闭（ONLINE_UPDATE=false），已用现有清单重新生成 hosts（${_t} 条）。"
         fi
         ;;
     rebuild)
@@ -34,6 +43,20 @@ case "$_cmd" in
             log_msg "info" "rebuild done; hosts regenerated: ${_t:-0} 条（SKIP_ADSDK=0：未合并广告 SDK 域）"
             echo "已用现有清单重新生成 hosts（${_t:-0} 条）。SKIP_ADSDK=0：未写入任何广告 SDK 域（默认关闭，绝不误伤）。"
         fi
+        ;;
+    clearcache)
+        # v1.2：清除在线缓存并重新生成 hosts（修复「关掉在线更新仍卡」）
+        #   1) 截断 downloaded_hosts.txt（保留空文件，避免 _emit 逻辑异常）
+        #   2) 删除在线态标记 .dl_online（使残留缓存「非在线态」，不再被 generate_hosts 追加）
+        #   3) 删除 .last_update（允许下次 update 重新拉取）
+        #   4) 重新生成 hosts（此时无缓存可追加 → hosts 仅内置 + 可选 adsdk）
+        : > "$MODDIR/common/downloaded_hosts.txt"
+        rm -f "$MODDIR/common/.dl_online"
+        rm -f "$MODDIR/common/.last_update"
+        generate_hosts
+        _t=$(grep -cvE '^[[:space:]]*#' "$MODDIR/system/etc/hosts" 2>/dev/null)
+        log_msg "info" "clearcache done; hosts regenerated: ${_t:-0} 条（已移除在线缓存）"
+        echo "已清除在线缓存并重新生成 hosts（${_t:-0} 条）。建议重启或清除 DNS 缓存以恢复 DNS 性能。"
         ;;
     adsdk)
         # v1.1：广告 SDK 域名增强状态查询
@@ -64,12 +87,13 @@ case "$_cmd" in
         fi
         ;;
     *)
-        echo "Usage: $0 [update|enable|disable|status|rebuild|adsdk]"
+        echo "Usage: $0 [update|enable|disable|status|rebuild|clearcache|adsdk]"
         echo "  update   下载最新清单并重新生成 hosts"
         echo "  rebuild  用现有清单重新生成 hosts（不下载）"
         echo "  enable   启用模块（移除 disable 标记）"
         echo "  disable  禁用模块（创建 disable 标记）"
         echo "  status   显示当前状态（默认）"
+        echo "  clearcache 清除在线缓存并重新生成 hosts（移除 .dl_online / .last_update）"
         echo "  adsdk    显示广告 SDK 域名增强状态（SKIP_ADSDK）"
         ;;
 esac

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.adskip.app"
-    android:versionCode="110"
-    android:versionName="1.1.0">
+    android:versionCode="120"
+    android:versionName="1.2.0">
 
     <uses-sdk
         android:minSdkVersion="23"
@@ -43,7 +43,8 @@
             android:name=".AdSkipAccessibilityService"
             android:exported="true"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
-            android:label="@string/acc_service_label">
+            android:label="@string/acc_service_label"
+            android:canPerformGestures="true">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
             </intent-filter>
@@ -69,4 +70,10 @@
         </receiver>
 
     </application>
+
+    <!-- v1.2：声明对 AdSkip VPN（独立应用，com.adskip.vpn）的包可见性，
+         使本管理器能在 Android 11+ 查询是否安装并 deep-link 启动之（不内嵌 VPN 逻辑、不新增 INTERNET）。 -->
+    <queries>
+        <package android:name="com.adskip.vpn" />
+    </queries>
 </manifest>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AdSkip 无障碍服务配置。
+  说明：packageNames 此处留空（不指定），表示由系统把事件投递给本服务，
+  真正的包名过滤以 AdSkipPrefs.ENABLED_APPS 运行时为准（支持 App 内增删，见设计 §3.6）。
+  eventTypes / feedbackType / flags / canRetrieveWindowContent 等按设计配置。
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/acc_service_desc"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:notificationTimeout="100"
+    android:canRetrieveWindowContent="true"
+    android:settingsActivity="com.adskip.app.MainActivity"
+    android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows" />

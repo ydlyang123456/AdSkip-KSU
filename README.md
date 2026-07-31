@@ -67,7 +67,7 @@ sh /data/adb/modules/adskip_ksu/action.sh disable    # 禁用模块
 | --- | --- | --- |
 | `REDIRECT_IPV4` | IPv4 黑洞地址 | `0.0.0.0` |
 | `REDIRECT_IPV6` | IPv6 黑洞地址 | `::` |
-| `ONLINE_UPDATE` | 是否允许在线更新 | `true` |
+| `ONLINE_UPDATE` | 是否允许在线更新 | `false`（v1.2 起默认关，修复卡顿根因） |
 | `UPDATE_MIN_AGE_HOURS` | 两次在线更新最小间隔（小时） | `24` |
 | `UPDATE_URLS` | 在线 hosts 源（空格分隔多个 URL） | StevenBlack Unified + notracking + blocklistproject ads/tracking/malware（5 个实测可用、更激进聚合源） |
 | `DISABLE_PRIVATE_DNS` | 是否关闭系统级私有 DNS（Private DNS / DoH） | `true` |
@@ -84,8 +84,8 @@ sh /data/adb/modules/adskip_ksu/action.sh disable    # 禁用模块
 
 模块默认开启两项增强以获得更彻底的屏蔽：
 
-1. **更激进的多源在线更新（默认开）**
-   默认 `ONLINE_UPDATE="true"`，且 `UPDATE_URLS` 已替换为 **5 个实测可用（HTTP 200）、更激进的 hosts 聚合源**，覆盖更广（广告 / 追踪 / 恶意）：
+1. **更激进的多源在线更新（v1.2 起默认关）**
+   v1.1 默认 `ONLINE_UPDATE="true"`；**v1.2 起默认改为 `"false"`**（修复卡顿根因，详见 §十一）。如需更强覆盖可手动开启。且 `UPDATE_URLS` 已替换为 **5 个实测可用（HTTP 200）、更激进的 hosts 聚合源**，覆盖更广（广告 / 追踪 / 恶意）：
    - StevenBlack Unified（hosts 格式，基础档）
    - notracking hostnames（**纯域名**列表，约 5.6 万行，无 IP 前缀）
    - blocklistproject ads（hosts 格式）
@@ -250,3 +250,61 @@ AdSkip-KSU/
 │       └── hosts            # 占位兜底（开机由脚本覆写为完整列表）
 └── README.md
 ```
+
+---
+
+## 十一、v1.2 增量说明（缓存修复 · SDK 域名扩充 · VPN 立项）
+
+v1.2 聚焦**修复 v1.1 的卡顿根因**并扩充广告 SDK 域名，同时立项独立 VPN 应用。hosts 线默认全关（`ONLINE_UPDATE=false`、`SKIP_ADSDK=0`），遵循「默认不误伤」。
+
+### 1. 缓存 bug 修复（核心，P0）
+
+**根因**：v1.1 默认 `ONLINE_UPDATE="true"`，5 个激进源合并后 `downloaded_hosts.txt` 高达 265 万条；`generate_hosts` 又**无条件**把该缓存追加进 `/etc/hosts`，导致 DNS 解析拖死。更严重的是，即便把 `ONLINE_UPDATE` 改为 `false`，也只是停了下载，旧缓存仍会被写进 hosts——「关在线更新 ≠ 不卡」。
+
+**修复（设计裁定：Model B — 双重门控）**：
+
+- **默认关在线更新**：`config.sh` 的 `ONLINE_UPDATE` 由 `true` 改为 **`false`**。刷入 v1.2 后，首次生成 hosts 即不再追加任何在线缓存，hosts 回落到内置清单，卡顿消失。
+- **双重门控**：`generate_hosts` 追加在线缓存的条件收紧为
+  `APPEND ⇔ ( ONLINE_UPDATE=="true" ) AND ( -f common/.dl_online ) AND ( -s common/downloaded_hosts.txt )`
+  仅当「在线更新开 + 缓存为在线态（`.dl_online` 标记存在）+ 缓存非空」三者同时满足才追加；否则不追加。缓存态由 `fetch_online` 成功时写入 `.dl_online`、失败时删除来维护。
+- **HOSTS 护栏**：`config.sh` 新增 `HOSTS_GUARD_LINES=50000`。`generate_hosts` 去重后若有效行数超过该阈值，记 `warn` 并提示「关闭 ONLINE_UPDATE 或执行 clearcache 以恢复 DNS 性能」。
+
+### 2. 新增 `clearcache` 命令
+
+用于**主动清除在线缓存**并回到离线态：
+
+```sh
+sh /data/adb/modules/adskip_ksu/action.sh clearcache
+```
+
+语义：截断 `downloaded_hosts.txt` + 删除 `.dl_online` + 删除 `.last_update` + 重新生成 hosts（离线态）。执行后 hosts 仅含内置清单，卡顿必消失。建议在运行 `clearcache` 后重启或清除系统 DNS 缓存。
+
+> 配套 App 会在检测到「陈旧缓存」（`downloaded_hosts.txt` 非空且 `ONLINE_UPDATE!=true` 或无 `.dl_online`）时，首页/模块页黄条提示并提供一键 `clearcache`。`status --json` 新增 `onlineCacheActive` / `cacheLines` / `staleCache` 三个字段供 App 读取。
+
+### 3. `update` 行为变更
+
+- `ONLINE_UPDATE="true"`：与 v1.1 一致，下载 → 标记 `.dl_online` → 重新生成 hosts。
+- `ONLINE_UPDATE="false"`（默认）：`update` **只 rebuild、不下载**，避免写入 `.dl_online` 标记，彻底杜绝旧缓存被追加。
+
+### 4. 广告 SDK 域名扩充（P1）
+
+`common/blocklist_adsdk.txt` 在 v1.1 基础上新增多厂商广告 SDK 服务端域（穿山甲扩展、腾讯优量汇、华为、OPPO、vivo、快手磁力、360、多盟、AdView、有米、极光、国际 Google/第三方等），详见 `docs/ADSDK_REGRESSION.md` §五。**仍严格遵循红线**：只收广告投放/竞价/归因 SDK 服务端域，绝不收录任何音乐 App 的播放流/下载/搜索/图片 CDN 或同名内容/主站域（如 `y.qq.com`、`music.huawei.com`、`live.kuaishou.com` 等一律不入）。
+
+### 5. 立项独立 VPN 应用（Phase 2）
+
+v1.2 设计**立项**一款独立 VPN 应用（`com.adskip.vpn`，工程目录 `E:/root模块/AdSkipVPN/`），用于接管设备 DNS、过滤广告域名、屏蔽 DoH 端点，并与真实 VPN 单槽位共存（fake-VPN / DNS-only 分流隧道）。
+
+- **与 manager App 完全分离、不合并**：VPN 应用需 `INTERNET` 权限，而 manager App 坚持「无 INTERNET」安全模型；两者独立 APK、独立工程、独立安装，manager App 仅以 deep-link 方式启动/引导安装 VPN 应用。
+- 详细架构见 `docs/system_design_v1.2.md` 第五章与 `E:/root模块/AdSkipVPN/`（MVP 不要求 root）。
+
+### 6. 无障碍开屏跳过增强（P1）
+
+在保留 v1.1「命中『跳过』按钮即点掉」的基础上，v1.2 强化识别与防误触，**全部默认关闭**，需用户在系统无障碍中授权且手动开启：
+
+- **倒计时按钮识别**：新增正则 `跳过\(\d+\)` / `跳过\(\d+\)s?`（如 `跳过(5)` / `跳过(5s)`），可识别带倒计时的跳过按钮文案，不必等待倒计时结束。
+- **全屏广告关闭按钮**：新增 `findCloseNode()`，遍历可点击节点识别关闭文案（× / X / 关闭 / close），且当该节点（或其祖先）覆盖屏幕 ≥ 90%（近似全屏遮罩）时判定为全屏广告关闭按钮并点击，覆盖「无『跳过』字样、仅有 X 关闭」的全屏广告场景。
+- **上滑 / 滑动关闭（默认关）**：新增 `ENABLE_SLIDE_CLOSE` 开关（**默认 `false`**）。开启后，当命中滑动提示文案（`上滑关闭` / `滑动关闭` / `上滑跳过广告` 等）时，通过 `AccessibilityService.dispatchGesture` 执行水平滑动手势关闭全屏广告（要求 API≥24 且服务已声明 `android:canPerformGestures="true"`，已在 `AndroidManifest.xml` 声明）。该能力默认关闭，避免与点击逻辑冲突或误触。
+- **防误触词扩充**：排除词（命中则不点）新增 `了解详情` / `立即体验`；安全点击候选词（不被排除扫描拦截）新增 `知道了` / `稍后`；既有排除词（如 支付 / 开通会员 / 立即支付 等）保持不变。
+- 该线仍为纯本地（`SharedPreferences`，免 root），与 hosts 线解耦；配套 App 依然**无 INTERNET 权限**。
+
+> 配套 App 的「开屏跳过」页新增「滑动关闭全屏广告」开关（对应 `ENABLE_SLIDE_CLOSE`，默认关），其余行为同上。

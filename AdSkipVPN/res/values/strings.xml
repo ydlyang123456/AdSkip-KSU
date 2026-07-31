@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AdSkip VPN</string>
+
+    <!-- 前台通知（常驻） -->
+    <string name="vpn_channel">AdSkip VPN</string>
+    <string name="vpn_notif_title">AdSkip VPN 运行中</string>
+    <string name="vpn_notif_text">已拦截 %1$d 次</string>
+
+    <!-- 主界面 -->
+    <string name="enable_vpn">启用 AdSkip VPN</string>
+    <string name="blocked_count">已拦截：%1$d 次</string>
+    <string name="conflict_warn">检测到其他 VPN 正在运行，请先断开其他 VPN 再启用 AdSkip VPN（Android 仅允许一个活跃 VPN）。</string>
+    <string name="status_idle">未运行</string>
+    <string name="per_app">按应用放行（勾选后该应用绕过 AdSkip VPN，使用真实 DNS）</string>
+    <string name="doh_toggle">拦截 DoH 端点（强制回退到受控明文 DNS）</string>
+    <string name="import_blocklist">从 AdSkip 模块导入黑名单（需 root）</string>
+</resources>

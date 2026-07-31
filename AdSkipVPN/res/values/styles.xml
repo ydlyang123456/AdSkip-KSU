@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 纯 Android SDK（无 AppCompat/第三方库），基于 Material 主题派生 NoActionBar -->
+    <style name="Theme.AdSkip.NoActionBar" parent="android:Theme.Material.Light.NoActionBar">
+    </style>
+</resources>

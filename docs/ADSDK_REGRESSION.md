@@ -48,3 +48,44 @@
 - 本清单只管 **hosts 线**（网络层屏蔽广告请求）。
 - **开屏/弹窗/信息流广告的「点击跳过」由无障碍线（`ENABLE_SKIP`）负责**，两者互补、互不依赖。
 - 同一广告可能同时被两条线处理（hosts 拦请求 + 无障碍点跳过），属预期叠加效果。
+
+---
+
+## 五、v1.2 扩充域回归口径
+
+> 本节记录 v1.2 在 `blocklist_adsdk.txt` 中**新增**的广告 SDK 域，并复核「仅广告域」判定与误伤红线。
+
+### 5.1 本次新增域清单（按分类）
+
+| 分类 | 新增域 | 为何仅属广告域 |
+| --- | --- | --- |
+| 穿山甲扩展 | `log.pangle.io`、`agent.pangle.io` | 穿山甲（Pangle）SDK 日志/监控上报与 agent 服务端域，无任何音乐内容/播放流 |
+| 腾讯优量汇 | `ylh.qq.com` | 腾讯优量汇（YLH）广告交易服务端域；**注意区分 `y.qq.com`（QQ音乐内容，禁）** |
+| 华为广告 | `ads.huawei.com` | 华为广告服务端域；**区分 `music.huawei.com`（华为音乐内容，禁）** |
+| OPPO | `ads.coloros.com` | ColorOS 广告服务端域 |
+| vivo | `ads.vivo.com` | vivo 广告服务端域 |
+| 快手磁力 | `ad.kuaishou.com` | 快手磁力（Magnet）广告投放域；**区分 `live.kuaishou.com`（快手直播内容，禁）** |
+| 360 | `ad.360.cn`、`ads.360.cn` | 360 广告服务端域 |
+| 多盟 | `domob.cn`、`s.domob.cn` | 多盟（Domob）广告交易平台域 |
+| AdView | `adview.cn`、`a.adview.cn` | AdView 广告 SDK 服务端域 |
+| 有米 | `ad.youmi.net`、`youmi.net` | 有米（Youmi）广告 SDK 服务端域（非音乐 App） |
+| 极光 | `ad.jiguang.cn` | 极光（Jiguang）推送/广告服务端域 |
+| 国际 | `googleads.g.doubleclick.net`、`pagead2.googlesyndication.com`、`adservice.google.com`、`admob.com`、`criteo.com`、`pubmatic.com` | Google/第三方国际广告投放与竞价服务端域 |
+
+### 5.2 判定复核（只收广告/SDK 服务端域）
+
+- 上述域名**全部**对应广告投放/竞价/归因 SDK 的服务端，不含任何音频流、MV 流、歌词/封面图片 CDN。
+- 凡与「同名内容域/主站域」易混淆者（如 `ylh.qq.com` vs `y.qq.com`、`ads.huawei.com` vs `music.huawei.com`、`ad.kuaishou.com` vs `live.kuaishou.com`），均已逐一核对：仅收广告侧，内容侧一律不入。
+
+### 5.3 谨慎域（默认不收，留待后续开关）
+
+- **推送/归因类谨慎域**：`getui.com` / `sdk.getui.com` 等个推、`jpush.cn` 等极光主推送域，可能承载非广告业务（推送/IM），**本次默认不收入** `blocklist_adsdk.txt`，避免误伤正常推送；后续如需纳入，应单独做成可开关选项，默认关闭。
+- 若后续确认某推送/归因域**确仅用于广告归因且不影响播放功能**，再按 §一 谨慎评估纳入。
+
+### 5.4 误伤即移除机制
+
+- 若真机发现某 App 因 v1.2 新增域被误伤：
+  1. 直接从 `blocklist_adsdk.txt` 移除该域（最快，下次 `rebuild` 即刻恢复）；
+  2. 或置 `SKIP_ADSDK=0`（整条 hosts 线关闭，播放域不受任何影响）。
+- 模块不提供「逐域白名单」，保持简洁；误伤处置以「删域 / 关开关」为唯一路径。
+- v1.2 新增域均需在真机回归中复测 4 大音乐 App（网易云 / QQ音乐 / 酷狗概念版 / 酷我）播放、搜索、下载、歌词/封面不受影响。

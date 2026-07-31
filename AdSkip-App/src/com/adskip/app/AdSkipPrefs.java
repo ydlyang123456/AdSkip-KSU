@@ -33,6 +33,8 @@ public final class AdSkipPrefs {
     public static final String KEY_SKIP_DELAY_MS = "SKIP_DELAY_MS";
     public static final String KEY_SUBWINDOW_EXCLUDE = "SUBWINDOW_EXCLUDE";
     public static final String KEY_WIFI_ONLY = "WIFI_ONLY";
+    /** v1.2：滑动关闭（全屏广告遮罩手势关闭），默认关。 */
+    public static final String KEY_ENABLE_SLIDE_CLOSE = "ENABLE_SLIDE_CLOSE";
     public static final String KEY_STATS_DATE = "STATS_DATE";
     public static final String KEY_STATS_COUNT = "STATS_COUNT";
 
@@ -44,6 +46,8 @@ public final class AdSkipPrefs {
     public static final int DEF_SKIP_DELAY_MS = 300;
     public static final boolean DEF_SUBWINDOW_EXCLUDE = true;
     public static final boolean DEF_WIFI_ONLY = false;
+    /** v1.2：滑动关闭默认关（需用户在系统无障碍授予手势权限才生效）。 */
+    public static final boolean DEF_ENABLE_SLIDE_CLOSE = false;
 
     private static final Set<String> DEF_ENABLED_APPS;
     private static final Set<String> DEF_SKIP_KEYWORDS;
@@ -64,6 +68,14 @@ public final class AdSkipPrefs {
         DEF_SKIP_KEYWORDS.add("close");
         DEF_SKIP_KEYWORDS.add("×");
         DEF_SKIP_KEYWORDS.add("X");
+        // v1.2：倒计时跳过按钮（如「跳过(5)」「跳过(5s)」「跳过广告5s」）
+        DEF_SKIP_KEYWORDS.add("跳过\\s*\\(\\d+\\)");
+        DEF_SKIP_KEYWORDS.add("跳过\\s*\\(\\d+\\s*s?\\)");
+        DEF_SKIP_KEYWORDS.add("跳过广告\\s*\\d+\\s*s?");
+        // v1.2：安全点击候选（纯关闭/无副作用的弹窗关闭按钮，受整窗排除保护）
+        //   设计 Q4 裁定：仅「知道了 / 稍后」作安全点击候选；「了解详情 / 立即体验」仅入排除词（绝不点）。
+        DEF_SKIP_KEYWORDS.add("知道了");
+        DEF_SKIP_KEYWORDS.add("稍后");
 
         DEF_EXCLUDE_KEYWORDS = new LinkedHashSet<>();
         DEF_EXCLUDE_KEYWORDS.add("确认支付");
@@ -72,6 +84,9 @@ public final class AdSkipPrefs {
         DEF_EXCLUDE_KEYWORDS.add("同意并继续");
         DEF_EXCLUDE_KEYWORDS.add("领取");
         DEF_EXCLUDE_KEYWORDS.add("开通");
+        // v1.2：业务转化按钮，绝不自动点（防误触）
+        DEF_EXCLUDE_KEYWORDS.add("了解详情");
+        DEF_EXCLUDE_KEYWORDS.add("立即体验");
     }
 
     private final SharedPreferences sp;
@@ -147,6 +162,11 @@ public final class AdSkipPrefs {
 
     public boolean isWifiOnly() {
         return getBool(KEY_WIFI_ONLY, DEF_WIFI_ONLY);
+    }
+
+    /** v1.2：滑动关闭是否开启（默认关）。 */
+    public boolean isSlideCloseEnabled() {
+        return getBool(KEY_ENABLE_SLIDE_CLOSE, DEF_ENABLE_SLIDE_CLOSE);
     }
 
     // ---- 今日计数（跨天自动清零） ----

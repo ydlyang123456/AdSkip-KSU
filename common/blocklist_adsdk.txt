@@ -4,7 +4,7 @@
 # 用途：仅收录【纯广告投放 / 竞价 / 归因 SDK 服务端域】。
 # 约束（硬）：
 #   1. 仅含广告 SDK 域，绝不收录任何音乐 App 的播放流 / 下载 / 搜索 / 图片 CDN。
-#   2. 绝不收录同名主站 / 内容域（如 music.163.com、y.qq.com、*.kugou.com 内容域等）。
+#   2. 绝不收录同名主站 / 内容域（如网易云、QQ音乐、酷狗等音乐 App 的内容/主站域）。
 #   3. 由 config.sh 的 SKIP_ADSDK 开关门控（默认 0 = 关闭），rebuild 后合并进 hosts。
 #   4. 误伤豁免见 docs/ADSDK_REGRESSION.md：移除该域或置 SKIP_ADSDK=0 即可。
 # 格式：每行一个纯域名；# 注释；空行忽略；与 blocklist.txt 同格式。
@@ -71,3 +71,54 @@ ad.sigmob.cn
 
 # ---- Fyber ----
 fyber.com
+
+# ============================================================
+# v1.2 扩充：以下均仅属「广告投放/竞价 SDK 服务端域」，严格对照 ADSDK_REGRESSION.md 红线，
+# 绝不收录任何音乐 App 的播放/下载/搜索/图片 CDN 或同名内容/主站域。
+# ============================================================
+
+# ---- 穿山甲扩展 (Pangle extend) ----
+log.pangle.io              # 穿山甲日志/监控上报域（广告 SDK 服务端，非内容）
+agent.pangle.io            # 穿山甲 agent 域（广告 SDK 服务端）
+
+# ---- 腾讯优量汇 (YLH / Tencent Ads) ----
+ylh.qq.com                 # 腾讯优量汇广告交易域（广告 SDK 服务端，≠ QQ音乐内容域）
+
+# ---- 华为广告 (Huawei Ads) ----
+ads.huawei.com             # 华为广告服务端域（≠ 华为音乐内容域）
+
+# ---- OPPO 广告 (ColorOS Ads) ----
+ads.coloros.com            # OPPO ColorOS 广告域
+
+# ---- vivo 广告 (Vivo Ads) ----
+ads.vivo.com               # vivo 广告域
+
+# ---- 快手磁力 (Kuaishou Magnet) ----
+ad.kuaishou.com            # 快手磁力广告投放域（≠ 快手直播内容域）
+
+# ---- 360 广告 (360 Ads) ----
+ad.360.cn                  # 360 广告域
+ads.360.cn                 # 360 广告域
+
+# ---- 多盟 (Domob) ----
+domob.cn                   # 多盟广告域
+s.domob.cn                 # 多盟广告域
+
+# ---- AdView ----
+adview.cn                  # AdView 广告域
+a.adview.cn                # AdView 广告域
+
+# ---- 有米 (Youmi) ----
+ad.youmi.net               # 有米广告域
+youmi.net                  # 有米主站（广告 SDK 服务端）
+
+# ---- 极光 (Jiguang) ----
+ad.jiguang.cn              # 极光推送/广告域
+
+# ---- 国际广告 SDK (International) ----
+googleads.g.doubleclick.net   # Google AdSense/AdMob 广告投放（DoubleClick）
+pagead2.googlesyndication.com # Google AdSense 投放域
+adservice.google.com          # Google 广告服务域
+admob.com                     # Google AdMob 广告平台
+criteo.com                    # Criteo 广告重定向/竞价
+pubmatic.com                  # PubMatic 广告交易平台

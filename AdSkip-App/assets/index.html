@@ -250,6 +250,39 @@
   }
   .chip-add:active{background:rgba(0,230,118,0.22);}
   .skip-empty{font-size:12.5px;color:var(--text-3);}
+
+  /* ===== v1.2 缓存黄条（amber） ===== */
+  .warn-bar{
+    display:none;
+    background:rgba(255,176,32,0.14);
+    border-bottom:1px solid rgba(255,176,32,0.4);
+    color:#FFD27A;
+    font-size:13px;font-weight:600;line-height:1.5;
+    padding:12px 18px;
+  }
+  .warn-bar .warn-btn{
+    display:inline-block;margin-top:8px;padding:7px 14px;border-radius:10px;
+    border:1px solid rgba(255,176,32,0.5);background:rgba(255,176,32,0.16);
+    color:#FFD27A;font-weight:600;cursor:pointer;font-family:inherit;font-size:12px;
+  }
+  .warn-bar .warn-btn:active{background:rgba(255,176,32,0.28);}
+
+  /* ===== v1.2 确认弹窗 ===== */
+  .modal-mask{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:50;}
+  .modal{background:#161A21;border:1px solid var(--border-2);border-radius:18px;padding:22px;max-width:82%;text-align:center;}
+  .modal-msg{font-size:14px;line-height:1.6;color:var(--text);margin-bottom:18px;}
+  .modal-btns{display:flex;gap:12px;}
+  .modal-btns button{flex:1;padding:12px;border-radius:12px;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer;border:1px solid var(--border);background:rgba(255,255,255,0.06);color:var(--text);}
+  .modal-yes{border-color:rgba(0,230,118,0.4);background:rgba(0,230,118,0.12);color:var(--accent);}
+
+  /* ===== v1.2 VPN 入口卡片 ===== */
+  .vpn-card{padding:14px 16px;border-radius:18px;display:flex;align-items:center;gap:13px;}
+  .vpn-ico{width:48px;height:48px;border-radius:14px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;background:linear-gradient(135deg,#2979FF,#1565C0);}
+  .vpn-body{flex:1;min-width:0;}
+  .vpn-body .vt{font-size:15px;font-weight:600;}
+  .vpn-body .vs{font-size:12px;color:var(--text-3);margin-top:3px;}
+  .vpn-go{padding:9px 16px;border-radius:12px;border:1px solid rgba(41,121,255,0.4);background:rgba(41,121,255,0.12);color:#6BA8FF;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;flex:0 0 auto;}
+  .vpn-go:active{background:rgba(41,121,255,0.22);}
 </style>
 </head>
 <body>
@@ -315,6 +348,16 @@
           <div class="info-cell glass"><span class="ik">在线更新</span><span class="iv" id="infoOnline">—</span></div>
           <div class="info-cell glass"><span class="ik">私有 DNS</span><span class="iv" id="infoDns">—</span></div>
         </div>
+
+        <!-- v1.2 AdSkip VPN 入口卡片（deep-link 启动独立应用，不内嵌 VPN 逻辑） -->
+        <div class="vpn-card glass" id="vpnCard">
+          <div class="vpn-ico">VPN</div>
+          <div class="vpn-body">
+            <div class="vt">AdSkip VPN（增强拦截）</div>
+            <div class="vs" id="vpnStatus">独立应用 · DNS 级广告过滤</div>
+          </div>
+          <div class="vpn-go" id="vpnGo">前往</div>
+        </div>
       </section>
 
       <!-- ============ PAGE: APPS ============ -->
@@ -341,15 +384,21 @@
 
       <!-- ============ PAGE: MODULES ============ -->
       <section class="page modules" data-page="modules">
-        <div class="sec-head">
-          <h1>模块管理</h1>
-          <span class="badge" id="modBadge">AdSkip</span>
-        </div>
+      <div class="sec-head">
+        <h1>模块管理</h1>
+        <span class="badge" id="modBadge">AdSkip</span>
+      </div>
 
-        <div class="summary glass">
-          <div class="st" id="modSummary">跳广告链路</div>
-          <div class="sd" id="modSummaryDesc">AdSkip-KSU 核心模块</div>
-        </div>
+      <!-- v1.2 陈旧缓存黄条（检测到旧在线缓存仍生效时显示，点按钮一键清除） -->
+      <div class="warn-bar" id="cacheWarnModules">
+        <span id="cacheWarnText">检测到旧缓存仍在生效，可能影响 DNS 速度。</span>
+        <span class="warn-btn" id="cacheClearBtn">清除在线缓存</span>
+      </div>
+
+      <div class="summary glass">
+        <div class="st" id="modSummary">跳广告链路</div>
+        <div class="sd" id="modSummaryDesc">AdSkip-KSU 核心模块</div>
+      </div>
 
         <div class="mod-card glass">
           <div class="mod-ico" style="background:linear-gradient(135deg,#00E676,#00B25C);">A</div>
@@ -383,6 +432,14 @@
             <div class="rs">开启后 rebuild 将纯广告 SDK 域写入 hosts（默认关，绝不误伤播放域）</div>
           </div>
           <div class="toggle" id="adsdkToggle"></div>
+        </div>
+
+        <div class="row-card glass" id="cacheClearRow" style="cursor:pointer;">
+          <div class="rl">
+            <div class="rt">清除在线缓存（v1.2）</div>
+            <div class="rs">截断 downloaded_hosts.txt 并重新生成 hosts，修复「关掉在线更新仍卡」</div>
+          </div>
+          <div style="color:var(--amber);font-weight:600;font-size:13px;">清除</div>
         </div>
       </section>
 
@@ -455,6 +512,14 @@
             <div class="rs">开启后仅在 WiFi 网络下自动跳过（需网络状态权限；当前未授予时等效关闭此限制）</div>
           </div>
           <div class="toggle" id="skipWifiToggle"></div>
+        </div>
+
+        <div class="row-card glass" style="margin-top:6px;">
+          <div class="rl">
+            <div class="rt">滑动关闭全屏广告（v1.2）</div>
+            <div class="rs">在全屏广告提示「上滑/滑动关闭」时用手势滑掉（默认关；需在系统无障碍授予「执行手势」权限）</div>
+          </div>
+          <div class="toggle" id="skipSlideToggle"></div>
         </div>
       </section>
 
@@ -633,6 +698,8 @@
     setControlsEnabled(true);
     statusData = s;
     render(s);
+    refreshCacheWarn();
+    refreshVpn();
     if (currentTab === "logs") loadLog();
   }
 
@@ -748,6 +815,8 @@
 
     // WiFi only
     setToggle("skipWifiToggle", cfg.wifiOnly);
+    // v1.2 滑动关闭（默认关）
+    setToggle("skipSlideToggle", cfg.slideClose);
   }
 
   function renderAppChips(apps){
@@ -889,6 +958,13 @@
     $("skipKeywordInput").addEventListener("keydown", function(e){ if (e.key === "Enter") addKeyword("skipKeywords"); });
     $("skipExcludeAdd").addEventListener("click", function(){ addKeyword("skipExcludes"); });
     $("skipExcludeInput").addEventListener("keydown", function(e){ if (e.key === "Enter") addKeyword("skipExcludes"); });
+    // v1.2 滑动关闭开关
+    var slide = $("skipSlideToggle");
+    if (slide) slide.addEventListener("click", function(){
+      var nowOn = !this.classList.contains("on");
+      this.classList.toggle("on", nowOn);
+      try { AdSkipBridge.setSlideClose(nowOn ? "true" : "false"); } catch(e){}
+    });
   }
 
   function bindAdsdk(){
@@ -900,14 +976,96 @@
         return;
       }
       var nowOn = !this.classList.contains("on");
+      if (nowOn){
+        // 开启前二次确认：避免误把广告 SDK 域名写进系统 hosts（默认关以绝不误伤播放域）
+        var self = this;
+        self.classList.remove("on");
+        confirmDialog("开启「广告 SDK 域名增强」会把纯广告 SDK 域名写进系统 hosts。默认关闭以绝不误伤音乐播放域。确认开启？", function(){
+          self.classList.add("on");
+          try {
+            AdSkipBridge.setConfig("SKIP_ADSDK", "1");
+            AdSkipBridge.runAction("rebuild");
+          } catch(e){}
+          setTimeout(refreshAdsdk, 450);
+        });
+        return;
+      }
       this.classList.toggle("on", nowOn);
       try {
-        // hosts 线开关值用 "1"/"0"（与 config.sh 的判等一致）
-        AdSkipBridge.setConfig("SKIP_ADSDK", nowOn ? "1" : "0");
-        // 写回后重新生成 hosts，使开关即时生效（覆盖挂载同 inode）
+        AdSkipBridge.setConfig("SKIP_ADSDK", "0");
         AdSkipBridge.runAction("rebuild");
       } catch(e){}
       setTimeout(refreshAdsdk, 450);
+    });
+  }
+
+  // ---- v1.2 确认弹窗 ----
+  function confirmDialog(msg, onConfirm){
+    var mask = document.createElement("div");
+    mask.className = "modal-mask";
+    mask.innerHTML = '<div class="modal"><div class="modal-msg">'+msg+'</div>'+
+      '<div class="modal-btns"><button class="modal-no">取消</button><button class="modal-yes">确认开启</button></div></div>';
+    document.body.appendChild(mask);
+    mask.querySelector(".modal-no").addEventListener("click", function(){ document.body.removeChild(mask); });
+    mask.querySelector(".modal-yes").addEventListener("click", function(){ document.body.removeChild(mask); onConfirm(); });
+  }
+
+  // ---- v1.2 在线缓存态黄条 ----
+  function refreshCacheWarn(){
+    if (!hasRootOk) return;
+    var warn = $("cacheWarnModules");
+    if (!warn) return;
+    var st;
+    try { st = JSON.parse(AdSkipBridge.getCacheState()); } catch(e){ st = null; }
+    if (st && st.staleCache){
+      $("cacheWarnText").textContent = "检测到旧缓存仍在生效（" + (st.cachedLines||0) + " 条在线域名），可能影响 DNS 速度。";
+      warn.style.display = "block";
+    } else {
+      warn.style.display = "none";
+    }
+  }
+  // v1.2：规范同名别名（部分入口可能以 window.refreshCacheBanner 调用）
+  window.refreshCacheBanner = refreshCacheWarn;
+
+  function bindCacheClear(){
+    var doClear = function(){
+      try { AdSkipBridge.clearCache(); } catch(e){}
+      var warn = $("cacheWarnModules");
+      if (warn) warn.style.display = "none";
+      setTimeout(refreshCacheWarn, 500);
+      setTimeout(refresh, 500);
+    };
+    var b1 = $("cacheClearBtn");
+    if (b1) b1.addEventListener("click", doClear);
+    var r1 = $("cacheClearRow");
+    if (r1) r1.addEventListener("click", doClear);
+  }
+
+  // ---- v1.2 AdSkip VPN 入口 ----
+  function refreshVpn(){
+    var status = $("vpnStatus");
+    if (!status) return;
+    var info;
+    try { info = JSON.parse(AdSkipBridge.getVpnInfo()); } catch(e){ info = {installed:false}; }
+    if (info && info.installed){
+      status.textContent = "已安装 · 点击前往";
+    } else {
+      status.textContent = "未安装 · 了解 / 获取（独立应用）";
+    }
+  }
+
+  function bindVpn(){
+    var go = $("vpnGo");
+    if (!go) return;
+    go.addEventListener("click", function(){
+      var info;
+      try { info = JSON.parse(AdSkipBridge.getVpnInfo()); } catch(e){ info = {installed:false}; }
+      if (info && info.installed){
+        try { AdSkipBridge.openVpnApp(); } catch(e){}
+      } else {
+        showBanner("尚未安装 AdSkip VPN（独立应用，需另行安装）。VPN 与管理者 App 分离，不内嵌网络权限。");
+        refreshVpn();
+      }
     });
   }
 
@@ -918,6 +1076,8 @@
     bindUpdate();
     bindSkip();
     bindAdsdk();
+    bindCacheClear();
+    bindVpn();
     try {
       hasRootOk = (typeof AdSkipBridge !== "undefined") && (AdSkipBridge.hasRoot() === "true");
     } catch(e){ hasRootOk = false; }

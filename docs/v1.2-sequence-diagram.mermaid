@@ -1,0 +1,114 @@
+%% AdSkip-KSU v1.2 · 时序图
+
+%% ===== 1. 缓存修复：rebuild / post-fs-data（双重门控，离线态不追加） =====
+sequenceDiagram
+    participant CALLER as action.sh / post-fs-data.sh
+    participant LIB as lib.sh:generate_hosts
+    participant CFG as config.sh
+    participant MARK as common/.dl_online
+    participant DL as downloaded_hosts.txt
+    participant OUT as system/etc/hosts
+
+    CALLER->>LIB: generate_hosts()
+    LIB->>CFG: read ONLINE_UPDATE
+    alt ONLINE_UPDATE="true" AND -f .dl_online AND -s downloaded_hosts.txt
+        LIB->>DL: tr -d '\r' >> OUT
+        LIB->>OUT: 追加在线缓存（在线态）
+        Note over LIB: 卡顿根因：v1.1 此步无条件执行
+    else 否则（默认 OFFLINE_UPDATE=false / 无标记）
+        LIB-->>OUT: 不追加（修复「关更新仍卡」）
+    end
+    LIB->>OUT: awk 去重（同 inode）
+    LIB->>LIB: 统计有效行数
+    alt 行数 > HOSTS_GUARD_LINES(50000)
+        LIB-->>LIB: log_msg warn "exceeds safe threshold"
+    end
+
+%% ===== 1b. clearcache 子命令 =====
+sequenceDiagram
+    participant UI as WebView / 终端
+    participant AC as action.sh clearcache
+    participant DL as downloaded_hosts.txt
+    participant MARK as common/.dl_online
+    participant LU as common/.last_update
+    participant LIB as lib.sh:generate_hosts
+
+    UI->>AC: sh action.sh clearcache
+    AC->>DL: : > (截断)
+    AC->>MARK: rm -f (清除在线态)
+    AC->>LU: rm -f (允许下次 update)
+    AC->>LIB: generate_hosts()
+    LIB-->>DL: 无缓存可追加 → hosts 仅内置(+adsdk)
+    AC-->>UI: "已清除在线缓存并重新生成 hosts（N 条）"
+
+%% ===== 2. VPN DNS 过滤流程 =====
+sequenceDiagram
+    participant APP as 任意 App
+    participant SYS as Android DNS 解析器
+    participant TUN as AdSkipVpnService / VpnTunnel
+    participant DP as DnsProxy
+    participant BL as Blocklist + DohBlocklist
+    participant RS as DnsResolver (protect)
+    participant UP as 上游明文 DNS (223.5.5.5)
+
+    APP->>SYS: 发起域名解析 (例 ad.doubleclick.net)
+    SYS->>TUN: UDP DNS → 10.0.0.1:53 (仅 DNS 路由进 tun)
+    TUN->>DP: 解析报文 → qname
+    DP->>BL: matches(qname) ?
+    alt 命中黑名单 / DoH 端点
+        DP-->>TUN: 伪造响应 A=0.0.0.0 (或 NXDOMAIN)
+        TUN-->>SYS: 写回 tun
+        SYS-->>APP: 解析为 0.0.0.0 → 广告请求失败(被拦)
+    else 未命中
+        DP->>RS: query(qname)
+        RS->>RS: VpnService.protect(sock) 排除自身
+        RS->>UP: 转发 DNS 查询
+        UP-->>RS: 真实响应
+        RS-->>DP: 响应 bytes
+        DP-->>TUN: 转发响应
+        TUN-->>SYS: 写回 tun
+        SYS-->>APP: 正常解析
+    end
+    DP->>DP: BlockStats.record(domain, uid)
+
+%% ===== 3. 强化无障碍命中流程 =====
+sequenceDiagram
+    participant SYS as Android System
+    participant SVC as AdSkipAccessibilityService
+    participant PRE as AdSkipPrefs
+    participant RGX as AdSkipRegex
+    participant NODE as AccessibilityNodeInfo
+
+    SYS->>SVC: onAccessibilityEvent(WINDOW_STATE/CONTENT_CHANGED)
+    SVC->>PRE: isSkipEnabled()
+    alt ENABLE_SKIP=false
+        SVC-->>SYS: return
+    else 已开启
+        SVC->>SYS: event.getPackageName()
+        SVC->>PRE: getEnabledApps()
+        alt 包名不在启用列表
+            SVC-->>SYS: return
+        else 目标 App
+            SVC->>SVC: root = getRootInActiveWindow()
+            SVC->>RGX: matchesSkip(node.text)  (含倒计时 跳过(5))
+            RGX-->>SVC: 命中?
+            SVC->>SVC: findCloseNode(root)  (全屏遮罩关闭按钮)
+            alt 命中跳过/关闭候选
+                SVC->>SVC: scanExclude(root)
+                SVC->>RGX: containsExclude(windowText)
+                RGX-->>SVC: 含支付/会员/领取红包/了解详情?
+                alt 含排除词 (安全白名单保底)
+                    SVC-->>SYS: 不点击（防误触）
+                else 不误触
+                    alt 候选为滑动型 且 ENABLE_SLIDE_CLOSE=true
+                        SVC->>SVC: dispatchGestureSlide()  (API>=24)
+                    else 点击型
+                        SVC->>PRE: getInt(SKIP_DELAY_MS)
+                        SVC->>NODE: 延迟后 performAction(ACTION_CLICK)
+                        NODE-->>SYS: 完成点击
+                        SVC->>PRE: incTodayCount()
+                    end
+                end
+            end
+        end
+    end

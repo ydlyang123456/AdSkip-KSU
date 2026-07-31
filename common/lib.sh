@@ -85,9 +85,18 @@ generate_hosts() {
         log_msg "info" "generate_hosts: SKIP_ADSDK=0, adsdk domains NOT written to hosts"
     fi
 
-    # 追加缓存的在线清单（已是 hosts 格式，原样追加；-s 确保非空才追加）
-    if [ -s "$_dl" ]; then
+    # v1.2：追加缓存的在线清单（已是 hosts 格式，原样追加）。
+    # 双重门控（设计 §二 Model B）：仅当「在线更新开启」且「缓存为在线态(.dl_online 标记存在)」
+    # 且「缓存文件非空」三者同时满足才追加；否则不追加。
+    # 修复 v1.1 的 bug：v1.1 仅判断 -s 非空即追加，导致 ONLINE_UPDATE=false 关掉更新后，
+    # 磁盘上残留的旧缓存（数百万行）仍被写进 hosts，卡顿依旧。
+    # 默认 ONLINE_UPDATE=false → 不追加 → 旧缓存不再生效，卡顿修复。
+    : "${HOSTS_GUARD_LINES:=50000}"
+    if [ "$ONLINE_UPDATE" = "true" ] && [ -f "$MODDIR/common/.dl_online" ] && [ -s "$_dl" ]; then
         tr -d '\r' < "$_dl" >> "$_out"
+        log_msg "info" "generate_hosts: appended online cache (ONLINE_UPDATE=true, online-state)"
+    else
+        log_msg "info" "generate_hosts: online cache NOT appended (ONLINE_UPDATE=$ONLINE_UPDATE, marker=$( [ -f "$MODDIR/common/.dl_online" ] && echo yes || echo no ))"
     fi
 
     # 整体去重（跳过空行，awk 保留首次出现顺序），写回同一 inode，保证幂等
@@ -97,6 +106,13 @@ generate_hosts() {
         cat "$_tmp" > "$_out"
     fi
     rm -f "$_tmp" 2>/dev/null
+
+    # v1.2：护栏——统计去重后有效行数（跳过 # 注释与空行）；超过阈值记 warn。
+    # 防止超大 hosts（如误开 ONLINE_UPDATE 且拉到数百万域）拖死 DNS，给出明确提示。
+    _n=$(grep -cvE '^[[:space:]]*#|^[[:space:]]*$' "$_out" 2>/dev/null)
+    if [ -n "$_n" ] && [ "$_n" -gt "$HOSTS_GUARD_LINES" ]; then
+        log_msg "warn" "hosts line count $_n exceeds safe threshold $HOSTS_GUARD_LINES; 建议关闭 ONLINE_UPDATE 或执行 clearcache 以恢复 DNS 性能"
+    fi
 }
 
 # ---- 下载单个 URL 并追加到目标文件 ----
@@ -142,11 +158,17 @@ fetch_online() {
             { print ip" "$0 }
         ' > "$_dl"
         rm -f "$_tmp" 2>/dev/null
-        log_msg "info" "online update complete"
+        # v1.2：标记缓存为「在线态」——generate_hosts 仅在该标记存在时才追加在线缓存。
+        # 这样 clearcache 删除标记后（即使 downloaded_hosts.txt 非空）也不会再被追加。
+        : > "$MODDIR/common/.dl_online"
+        log_msg "info" "online update complete (marked .dl_online)"
         return 0
     fi
     rm -f "$_tmp" 2>/dev/null
-    log_msg "warn" "online update failed, keeping cached list"
+    # v1.2：拉取失败 → 清除在线态标记，使残留的旧缓存「非在线态」，不再被 generate_hosts 追加。
+    #        保留 downloaded_hosts.txt 本身，避免无谓清空（下次成功更新会覆盖）。
+    rm -f "$MODDIR/common/.dl_online"
+    log_msg "warn" "online update failed, removed .dl_online marker (cache stays offline-state)"
     return 1
 }
 
@@ -231,6 +253,17 @@ print_status() {
     else
         echo "enabled        : YES"
     fi
+    # v1.2：缓存态（同义计算，供文本状态展示）
+    _onlineCacheActive="false"
+    if [ "$ONLINE_UPDATE" = "true" ] && [ -f "$MODDIR/common/.dl_online" ] && [ -s "$_dl" ]; then
+        _onlineCacheActive="true"
+    fi
+    _staleCache="false"
+    if [ -s "$_dl" ] && { [ "$ONLINE_UPDATE" != "true" ] || [ ! -f "$MODDIR/common/.dl_online" ]; }; then
+        _staleCache="true"
+    fi
+    echo "online cache active: $_onlineCacheActive"
+    echo "stale cache        : $_staleCache"
     detect_manager
 }
 
@@ -279,10 +312,24 @@ print_status_json() {
     _onlineUpdate="$ONLINE_UPDATE"
     _disablePrivateDns="$DISABLE_PRIVATE_DNS"
 
+    # v1.2：缓存态字段（供 App 判断是否「在线态 / 陈旧缓存」）
+    #   onlineCacheActive：仅当「在线更新开」且「缓存为在线态(.dl_online)」且「缓存非空」三者齐备才 true
+    #   cacheLines：downloaded_hosts.txt 的有效行数（非注释/空行）
+    #   staleCache：缓存非空 且（在线更新未开 或 非在线态）→ 陈旧缓存，提示清理
+    _onlineCacheActive="false"
+    if [ "$ONLINE_UPDATE" = "true" ] && [ -f "$MODDIR/common/.dl_online" ] && [ -s "$_dl" ]; then
+        _onlineCacheActive="true"
+    fi
+    _cacheLines=${_dd:-0}
+    _staleCache="false"
+    if [ -s "$_dl" ] && { [ "$ONLINE_UPDATE" != "true" ] || [ ! -f "$MODDIR/common/.dl_online" ]; }; then
+        _staleCache="true"
+    fi
+
     # version：来自 module.prop 的 version 字段
     _version=$(grep '^version=' "$MODDIR/module.prop" 2>/dev/null | head -n1 | cut -d= -f2-)
     [ -z "$_version" ] && _version="unknown"
 
-    printf '{"enabled":%s,"manager":"%s","listCount":%s,"lastUpdate":"%s","onlineUpdate":%s,"disablePrivateDns":%s,"version":"%s"}\n' \
-        "$_enabled" "$_manager" "$_listCount" "$_lastUpdate" "$_onlineUpdate" "$_disablePrivateDns" "$_version"
+    printf '{"enabled":%s,"manager":"%s","listCount":%s,"lastUpdate":"%s","onlineUpdate":%s,"disablePrivateDns":%s,"version":"%s","onlineCacheActive":%s,"cacheLines":%s,"staleCache":%s}\n' \
+        "$_enabled" "$_manager" "$_listCount" "$_lastUpdate" "$_onlineUpdate" "$_disablePrivateDns" "$_version" "$_onlineCacheActive" "$_cacheLines" "$_staleCache"
 }

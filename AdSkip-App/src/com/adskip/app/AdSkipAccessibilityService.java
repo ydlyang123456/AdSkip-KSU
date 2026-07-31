@@ -1,11 +1,17 @@
 package com.adskip.app;
 
 import android.accessibilityservice.AccessibilityService;
+import android.accessibilityservice.GestureDescription;
 import android.annotation.SuppressLint;
 import android.content.Intent;
+import android.graphics.Path;
+import android.graphics.Point;
+import android.graphics.Rect;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.Display;
+import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 
@@ -84,13 +90,16 @@ public class AdSkipAccessibilityService extends AccessibilityService {
         if (root == null) {
             return;
         }
-        AccessibilityNodeInfo skipNode = findSkipNode(root, regex);
-        if (skipNode == null) {
-            // root 已在 findSkipNode 内回收
+        AccessibilityNodeInfo candidate = findSkipNode(root, regex);
+        if (candidate == null) {
+            // root 已在 findSkipNode 内回收；再尝试识别全屏广告遮罩的关闭按钮（X / 关闭）
+            candidate = findCloseNode();
+        }
+        if (candidate == null) {
             return;
         }
 
-        // 6) 第二次取根（独立副本）：整窗排除词扫描，完全回收此副本，不影响 skipNode
+        // 6) 第二次取根（独立副本）：整窗排除词扫描，完全回收此副本，不影响 candidate
         boolean excluded = false;
         AccessibilityNodeInfo exRoot = getRootInActiveWindow();
         if (exRoot != null) {
@@ -99,12 +108,12 @@ public class AdSkipAccessibilityService extends AccessibilityService {
 
         // 7) 防误触：命中排除词则不点
         if (excluded) {
-            skipNode.recycle();
+            candidate.recycle();
             return;
         }
 
-        // 8) 延迟 + 可见可点击约束后点击（内部回收 skipNode）
-        performSkipClick(skipNode, prefs.getSkipDelayMs());
+        // 8) 点击型 / 滑动型统一处理（内部回收 candidate）
+        handleCandidate(candidate, regex);
     }
 
     /**
@@ -189,6 +198,174 @@ public class AdSkipAccessibilityService extends AccessibilityService {
             node.recycle(); // 回收每一个访问过的节点（含传入 root 副本）
         }
         return regex.containsExclude(sb.toString());
+    }
+
+    /**
+     * v1.2：识别全屏广告遮罩的关闭按钮（X / 关闭）。
+     * 独立取根（与 {@link #findSkipNode} 的 root 副本互不干扰），遍历所有可点击节点，
+     * 命中「关闭文本」且其祖先（或自身）覆盖屏幕 ≥ 90%（近似全屏遮罩）时返回该节点。
+     * 返回节点由调用方回收恰好一次；遍历过程中其余节点立即回收。
+     */
+    private AccessibilityNodeInfo findCloseNode() {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) {
+            return null;
+        }
+        Rect screen = getScreenRect();
+        long screenArea = (long) screen.width() * screen.height();
+        LinkedList<AccessibilityNodeInfo> queue = new LinkedList<>();
+        queue.add(root);
+        AccessibilityNodeInfo found = null;
+        while (!queue.isEmpty()) {
+            AccessibilityNodeInfo node = queue.pollFirst();
+            if (node == null) {
+                continue;
+            }
+            boolean matched = false;
+            if (node.isClickable()) {
+                CharSequence txt = node.getText();
+                if (txt != null && isCloseText(txt.toString())) {
+                    matched = true;
+                } else {
+                    CharSequence cd = node.getContentDescription();
+                    if (cd != null && isCloseText(cd.toString())) {
+                        matched = true;
+                    }
+                }
+            }
+            if (matched && insideFullscreen(node, screen, screenArea)) {
+                found = node;
+                break;
+            }
+            int cnt = node.getChildCount();
+            for (int i = 0; i < cnt; i++) {
+                queue.add(node.getChild(i));
+            }
+            if (node != root) {
+                node.recycle();
+            }
+        }
+        // 回收队列中未处理的节点（found 不回收，由调用方处理）
+        while (!queue.isEmpty()) {
+            AccessibilityNodeInfo n = queue.pollFirst();
+            if (n != null && n != found) {
+                n.recycle();
+            }
+        }
+        // 命中节点的祖先（含 root）已由 insideFullscreen 回收；仅当未命中时 root 需在此回收
+        if (found == null) {
+            root.recycle();
+        }
+        return found;
+    }
+
+    /**
+     * 判断节点是否位于「近似全屏容器」内（祖先或自身 bounds 覆盖屏幕 ≥ 90%）。
+     * 遍历 node 的父链，回收除 node 自身外的所有祖先 wrapper（避免泄漏）。
+     */
+    private boolean insideFullscreen(AccessibilityNodeInfo node, Rect screen, long screenArea) {
+        AccessibilityNodeInfo cur = node;
+        while (cur != null) {
+            Rect b = new Rect();
+            cur.getBoundsInScreen(b);
+            long area = (long) b.width() * b.height();
+            boolean full = screenArea > 0 && area >= screenArea * 9 / 10;
+            AccessibilityNodeInfo parent = cur.getParent();
+            if (cur != node) {
+                cur.recycle();
+            }
+            cur = parent;
+            if (full) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 是否命中「关闭按钮」文本（关闭 / 跳过 / × / X / close）。 */
+    private static boolean isCloseText(String s) {
+        if (s == null) {
+            return false;
+        }
+        if (s.contains("关闭") || s.contains("跳过")) {
+            return true;
+        }
+        String t = s.trim();
+        return t.equals("×") || t.equals("X") || t.equals("x") || t.equalsIgnoreCase("close");
+    }
+
+    /** 取屏幕尺寸（用于全屏判定与滑动手势坐标）。 */
+    private Rect getScreenRect() {
+        Rect r = new Rect();
+        try {
+            WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+            if (wm != null) {
+                Display d = wm.getDefaultDisplay();
+                Point p = new Point();
+                d.getRealSize(p);
+                r.set(0, 0, p.x, p.y);
+            }
+        } catch (Exception e) {
+            r.set(0, 0, 1080, 2400);
+        }
+        return r;
+    }
+
+    /**
+     * 统一处理命中候选：滑动型（ENABLE_SLIDE_CLOSE 开启且命中滑动提示）走手势关闭，
+     * 否则延迟 + 可见可点击后点击。内部回收 candidate 恰好一次。
+     */
+    private void handleCandidate(final AccessibilityNodeInfo node, AdSkipRegex regex) {
+        if (node == null) {
+            return;
+        }
+        CharSequence txt = node.getText();
+        String text = (txt != null) ? txt.toString() : "";
+        if (text.isEmpty()) {
+            CharSequence cd = node.getContentDescription();
+            if (cd != null) {
+                text = cd.toString();
+            }
+        }
+        if (prefs.isSlideCloseEnabled() && regex.matchesSlideHint(text)) {
+            dispatchGestureSlide();
+            prefs.incTodayCount();
+            node.recycle();
+            return;
+        }
+        performSkipClick(node, prefs.getSkipDelayMs());
+    }
+
+    /** v1.2：滑动关闭全屏广告（dispatchGesture 手势；API>=24 且已授权手势权限）。 */
+    @SuppressLint("NewApi")
+    private void dispatchGestureSlide() {
+        if (Build.VERSION.SDK_INT < 24) {
+            return;
+        }
+        Point size = new Point();
+        try {
+            WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+            if (wm != null) {
+                wm.getDefaultDisplay().getRealSize(size);
+            } else {
+                size.set(1080, 2400);
+            }
+        } catch (Exception e) {
+            size.set(1080, 2400);
+        }
+        // v1.2：水平滑动（从左到右，横跨屏幕中部）
+        int cy = size.y / 2;
+        int x1 = (int) (size.x * 0.25f);
+        int x2 = (int) (size.x * 0.75f);
+        Path path = new Path();
+        path.moveTo(x1, cy);
+        path.lineTo(x2, cy);
+        long now = System.currentTimeMillis();
+        GestureDescription.StrokeDescription stroke =
+                new GestureDescription.StrokeDescription(path, now, 250);
+        GestureDescription.Builder b = new GestureDescription.Builder();
+        b.addStroke(stroke);
+        dispatchGesture(b.build(), null, null);
     }
 
     /** 延迟后执行点击（P1：延迟 + 可见可点击约束）。 */

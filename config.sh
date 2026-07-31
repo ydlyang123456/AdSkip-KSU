@@ -10,10 +10,17 @@ REDIRECT_IPV4="0.0.0.0"
 REDIRECT_IPV6="::"
 
 # 是否允许在线更新（true / false）。离线时内置清单仍可正常生效。
-ONLINE_UPDATE="true"
+# v1.2：默认改为 "false"（修复 v1.1 卡顿根因）。
+# 原因：v1.1 默认 true 时合并 5 个激进源，downloaded_hosts.txt 达数百万行，
+#       无条件追加进 /etc/hosts 拖死 DNS。默认关后仅内置清单生效，卡顿消失。
+#       需更强覆盖的用户可在 App「模块」页或本文件手动开启。
+ONLINE_UPDATE="false"
 
 # 两次在线更新的最小间隔（小时），防止开机/频繁触发时反复联网。
 UPDATE_MIN_AGE_HOURS=24
+
+# v1.2 新增：generate_hosts 生成后去重有效行数超过此阈值记 warn（提示关在线更新 / clearcache）
+HOSTS_GUARD_LINES=50000
 
 # 在线 hosts 源（空格分隔的多个 URL）。仅下载数据清单文本，绝不以任何方式执行下载内容。
 # 采用更激进的聚合源组合（均为实测 HTTP 200 的可用源），覆盖更广（广告 / 追踪 / 恶意域名）：

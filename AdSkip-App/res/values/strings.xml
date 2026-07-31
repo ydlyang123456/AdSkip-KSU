@@ -4,7 +4,7 @@
 
     <!-- 无障碍服务（开屏跳过） -->
     <string name="acc_service_label">AdSkip 开屏跳过</string>
-    <string name="acc_service_desc">AdSkip 开屏跳过服务：在已授权的应用（默认网易云音乐、QQ音乐、酷狗概念版、酷我音乐）开屏 / 弹窗出现「跳过」按钮时自动点击跳过，并做「确认支付 / 开通会员」等排除词防误触。开启前请先在 AdSkip 应用的「开屏跳过」页开启总开关，并在系统无障碍中启用本服务。</string>
+    <string name="acc_service_desc">AdSkip 开屏跳过服务：在已授权的应用（默认网易云音乐、QQ音乐、酷狗概念版、酷我音乐）开屏 / 弹窗出现「跳过 / 跳过(5) / 关闭 / 知道了」等按钮时自动点击跳过；可识别全屏广告遮罩的关闭按钮；并做「确认支付 / 开通会员 / 领取 / 了解详情」等排除词防误触。开启前请先在 AdSkip 应用的「开屏跳过」页开启总开关，并在系统无障碍中启用本服务（滑动关闭需在系统无障碍授予「执行手势」权限）。</string>
 
     <!-- 前台保活通知（P1） -->
     <string name="acc_keepalive_channel">AdSkip 保活</string>

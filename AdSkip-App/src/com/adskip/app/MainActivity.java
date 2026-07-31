@@ -36,6 +36,9 @@ public class MainActivity extends Activity {
         settings.setAllowUniversalAccessFromFileURLs(false);
         settings.setDomStorageEnabled(true);
         settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
+        // 本 App 不声明任何网络权限（无 INTERNET），直接禁止 WebView 发起任何网络请求，
+        // 避免 index.html 中的外链字体等资源在无网环境下阻塞渲染（启动慢/切页卡）。
+        settings.setBlockNetworkLoads(true);
 
         webView.setWebViewClient(new WebViewClient());
         bridge = new AdSkipBridge(this);
